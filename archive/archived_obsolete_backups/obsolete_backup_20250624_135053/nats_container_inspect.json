@@ -1,0 +1,246 @@
+[
+    {
+        "Id": "c4bb1a31b6961e37a813bbef6040b3223a7f4605cf1b29a888620d9780359d29",
+        "Created": "2025-06-24T09:54:37.345331222Z",
+        "Path": "/nats-server",
+        "Args": [
+            "--config",
+            "nats-server.conf"
+        ],
+        "State": {
+            "Status": "running",
+            "Running": true,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 11642,
+            "ExitCode": 0,
+            "Error": "",
+            "StartedAt": "2025-06-24T09:54:38.035663923Z",
+            "FinishedAt": "0001-01-01T00:00:00Z"
+        },
+        "Image": "sha256:6761b0e777f1656a13ecd956c00dcf171bcf4f9c8e72b7d03d7d324b81c13ee0",
+        "ResolvConfPath": "/var/lib/docker/containers/c4bb1a31b6961e37a813bbef6040b3223a7f4605cf1b29a888620d9780359d29/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/c4bb1a31b6961e37a813bbef6040b3223a7f4605cf1b29a888620d9780359d29/hostname",
+        "HostsPath": "/var/lib/docker/containers/c4bb1a31b6961e37a813bbef6040b3223a7f4605cf1b29a888620d9780359d29/hosts",
+        "LogPath": "/var/lib/docker/containers/c4bb1a31b6961e37a813bbef6040b3223a7f4605cf1b29a888620d9780359d29/c4bb1a31b6961e37a813bbef6040b3223a7f4605cf1b29a888620d9780359d29-json.log",
+        "Name": "/llm-audio-app-nats-1",
+        "RestartCount": 0,
+        "Driver": "overlay2",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": null,
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {}
+            },
+            "NetworkMode": "llm-audio-app_default",
+            "PortBindings": {
+                "4222/tcp": [
+                    {
+                        "HostIp": "",
+                        "HostPort": "4222"
+                    }
+                ]
+            },
+            "RestartPolicy": {
+                "Name": "unless-stopped",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "CapAdd": null,
+            "CapDrop": null,
+            "CgroupnsMode": "private",
+            "Dns": null,
+            "DnsOptions": null,
+            "DnsSearch": null,
+            "ExtraHosts": [],
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": false,
+            "ReadonlyRootfs": false,
+            "SecurityOpt": null,
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 67108864,
+            "Runtime": "runc",
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 0,
+            "NanoCpus": 0,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": null,
+            "BlkioDeviceReadBps": null,
+            "BlkioDeviceWriteBps": null,
+            "BlkioDeviceReadIOps": null,
+            "BlkioDeviceWriteIOps": null,
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": null,
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "MemoryReservation": 0,
+            "MemorySwap": 0,
+            "MemorySwappiness": null,
+            "OomKillDisable": null,
+            "PidsLimit": null,
+            "Ulimits": null,
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "MaskedPaths": [
+                "/proc/asound",
+                "/proc/acpi",
+                "/proc/interrupts",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/sys/firmware",
+                "/sys/devices/virtual/powercap"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "GraphDriver": {
+            "Data": {
+                "ID": "c4bb1a31b6961e37a813bbef6040b3223a7f4605cf1b29a888620d9780359d29",
+                "LowerDir": "/var/lib/docker/overlay2/df8b3b0c711b0cc69dcac9c71e2af7f4a8aa9a22dcc40fc375a2af157e6dabd2-init/diff:/var/lib/docker/overlay2/1b9ffefb6ab873ba9ed07d97769a80865584e18a1f7f9d5a89d902e35c820014/diff:/var/lib/docker/overlay2/919b36a57c418bc68dc0543f0f97a7e8c296bb3041dabd93bb5ab0916e299f2a/diff",
+                "MergedDir": "/var/lib/docker/overlay2/df8b3b0c711b0cc69dcac9c71e2af7f4a8aa9a22dcc40fc375a2af157e6dabd2/merged",
+                "UpperDir": "/var/lib/docker/overlay2/df8b3b0c711b0cc69dcac9c71e2af7f4a8aa9a22dcc40fc375a2af157e6dabd2/diff",
+                "WorkDir": "/var/lib/docker/overlay2/df8b3b0c711b0cc69dcac9c71e2af7f4a8aa9a22dcc40fc375a2af157e6dabd2/work"
+            },
+            "Name": "overlay2"
+        },
+        "Mounts": [],
+        "Config": {
+            "Hostname": "c4bb1a31b696",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": true,
+            "AttachStderr": true,
+            "ExposedPorts": {
+                "4222/tcp": {},
+                "6222/tcp": {},
+                "8222/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/"
+            ],
+            "Cmd": [
+                "--config",
+                "nats-server.conf"
+            ],
+            "Image": "nats:latest",
+            "Volumes": null,
+            "WorkingDir": "/",
+            "Entrypoint": [
+                "/nats-server"
+            ],
+            "OnBuild": null,
+            "Labels": {
+                "com.docker.compose.config-hash": "07eab34f1e4d5b574f49d147f5028aad50499cbce7602291c9d18f7f837a225e",
+                "com.docker.compose.container-number": "1",
+                "com.docker.compose.depends_on": "",
+                "com.docker.compose.image": "sha256:6761b0e777f1656a13ecd956c00dcf171bcf4f9c8e72b7d03d7d324b81c13ee0",
+                "com.docker.compose.oneoff": "False",
+                "com.docker.compose.project": "llm-audio-app",
+                "com.docker.compose.project.config_files": "C:\\Users\\Personal\\CascadeProjects\\llm-audio-app\\docker-compose.yml",
+                "com.docker.compose.project.working_dir": "C:\\Users\\Personal\\CascadeProjects\\llm-audio-app",
+                "com.docker.compose.replace": "bb67a089f126d95056137f0863daf30fb1d64c9ad6c52bd8120a80f13809177b",
+                "com.docker.compose.service": "nats",
+                "com.docker.compose.version": "2.35.1"
+            }
+        },
+        "NetworkSettings": {
+            "Bridge": "",
+            "SandboxID": "e0786145e8b29f8c7733c0e126fdc2a1e4aa47f4f62079766ecf7815e69607e4",
+            "SandboxKey": "/var/run/docker/netns/e0786145e8b2",
+            "Ports": {
+                "4222/tcp": [
+                    {
+                        "HostIp": "0.0.0.0",
+                        "HostPort": "4222"
+                    }
+                ],
+                "6222/tcp": null,
+                "8222/tcp": null
+            },
+            "HairpinMode": false,
+            "LinkLocalIPv6Address": "",
+            "LinkLocalIPv6PrefixLen": 0,
+            "SecondaryIPAddresses": null,
+            "SecondaryIPv6Addresses": null,
+            "EndpointID": "",
+            "Gateway": "",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "IPAddress": "",
+            "IPPrefixLen": 0,
+            "IPv6Gateway": "",
+            "MacAddress": "",
+            "Networks": {
+                "llm-audio-app_default": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": [
+                        "llm-audio-app-nats-1",
+                        "nats"
+                    ],
+                    "MacAddress": "be:5e:0a:ef:d9:31",
+                    "DriverOpts": null,
+                    "GwPriority": 0,
+                    "NetworkID": "e56bfc08d68c17d2a43e4ff2bd067ce86aac5ec63483fdae5f73ce20a9b8ecde",
+                    "EndpointID": "6d27ccdeab196864c9a8a2e043d37998ab24c43262a20547e045c490d418205d",
+                    "Gateway": "172.18.0.1",
+                    "IPAddress": "172.18.0.2",
+                    "IPPrefixLen": 16,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "DNSNames": [
+                        "llm-audio-app-nats-1",
+                        "nats",
+                        "c4bb1a31b696"
+                    ]
+                }
+            }
+        }
+    }
+]
+

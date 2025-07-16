@@ -1,0 +1,21 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Force certain files to always use LF line endings
+*.sh text eol=lf
+*.ps1 text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.css text eol=lf
+*.scss text eol=lf
+*.html text eol=lf
+*.py text eol=lf
+*.txt text eol=lf
+
+# Force certain files to always use CRLF line endings
+*.bat text eol=crlf
+*.cmd text eol=crlf

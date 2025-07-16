@@ -1,0 +1,251 @@
+[
+    {
+        "Id": "01fbdc033525bc0e213e9bc372ca029dbc8b1e6adc34072aae0bc19c427fb3f3",
+        "Created": "2025-06-24T13:22:14.154434068Z",
+        "Path": "uvicorn",
+        "Args": [
+            "main:app",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "8000"
+        ],
+        "State": {
+            "Status": "running",
+            "Running": true,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 21452,
+            "ExitCode": 0,
+            "Error": "",
+            "StartedAt": "2025-06-24T13:22:14.746606721Z",
+            "FinishedAt": "0001-01-01T00:00:00Z"
+        },
+        "Image": "sha256:720d41bf68ecc8d7f58967a4213870e903a9605aff613b4ff2a914d6808dac63",
+        "ResolvConfPath": "/var/lib/docker/containers/01fbdc033525bc0e213e9bc372ca029dbc8b1e6adc34072aae0bc19c427fb3f3/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/01fbdc033525bc0e213e9bc372ca029dbc8b1e6adc34072aae0bc19c427fb3f3/hostname",
+        "HostsPath": "/var/lib/docker/containers/01fbdc033525bc0e213e9bc372ca029dbc8b1e6adc34072aae0bc19c427fb3f3/hosts",
+        "LogPath": "/var/lib/docker/containers/01fbdc033525bc0e213e9bc372ca029dbc8b1e6adc34072aae0bc19c427fb3f3/01fbdc033525bc0e213e9bc372ca029dbc8b1e6adc34072aae0bc19c427fb3f3-json.log",
+        "Name": "/llm-audio-app-backend-1",
+        "RestartCount": 0,
+        "Driver": "overlay2",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": null,
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {}
+            },
+            "NetworkMode": "llm-audio-app_default",
+            "PortBindings": {
+                "8000/tcp": [
+                    {
+                        "HostIp": "",
+                        "HostPort": "8000"
+                    }
+                ]
+            },
+            "RestartPolicy": {
+                "Name": "no",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "CapAdd": null,
+            "CapDrop": null,
+            "CgroupnsMode": "private",
+            "Dns": null,
+            "DnsOptions": null,
+            "DnsSearch": null,
+            "ExtraHosts": [],
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": false,
+            "ReadonlyRootfs": false,
+            "SecurityOpt": null,
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 67108864,
+            "Runtime": "runc",
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 0,
+            "NanoCpus": 0,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": null,
+            "BlkioDeviceReadBps": null,
+            "BlkioDeviceWriteBps": null,
+            "BlkioDeviceReadIOps": null,
+            "BlkioDeviceWriteIOps": null,
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": null,
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "MemoryReservation": 0,
+            "MemorySwap": 0,
+            "MemorySwappiness": null,
+            "OomKillDisable": null,
+            "PidsLimit": null,
+            "Ulimits": null,
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "MaskedPaths": [
+                "/proc/asound",
+                "/proc/acpi",
+                "/proc/interrupts",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/sys/firmware",
+                "/sys/devices/virtual/powercap"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "GraphDriver": {
+            "Data": {
+                "ID": "01fbdc033525bc0e213e9bc372ca029dbc8b1e6adc34072aae0bc19c427fb3f3",
+                "LowerDir": "/var/lib/docker/overlay2/a54341ac5916efdbc9c72ee2584368d068fdd9a5b714fea2f7db69598a609c6a-init/diff:/var/lib/docker/overlay2/s4aglaoku6iekxfth9loz1w5d/diff:/var/lib/docker/overlay2/tw34skxvplhapfx2cqq4rg6t1/diff:/var/lib/docker/overlay2/n91n1w66pnnghvibkuy51zg6z/diff:/var/lib/docker/overlay2/bb20956ba13067ba9713c5a0065ad435a8265c1c912fd90ebb1994d0177f70e8/diff:/var/lib/docker/overlay2/0abbf96d89c2626f13f903142157eb746db698b3e3feee2c21e4220d4b3cfa39/diff:/var/lib/docker/overlay2/45b3270436002071c0f46a3c739a9508a0e0c15686856ef50d788c72964b0304/diff:/var/lib/docker/overlay2/f9be60921832b77685f6e7bed9aadb2da4bd0f727b3d2e1a40cf1f7c8a16047a/diff",
+                "MergedDir": "/var/lib/docker/overlay2/a54341ac5916efdbc9c72ee2584368d068fdd9a5b714fea2f7db69598a609c6a/merged",
+                "UpperDir": "/var/lib/docker/overlay2/a54341ac5916efdbc9c72ee2584368d068fdd9a5b714fea2f7db69598a609c6a/diff",
+                "WorkDir": "/var/lib/docker/overlay2/a54341ac5916efdbc9c72ee2584368d068fdd9a5b714fea2f7db69598a609c6a/work"
+            },
+            "Name": "overlay2"
+        },
+        "Mounts": [],
+        "Config": {
+            "Hostname": "01fbdc033525",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": true,
+            "AttachStderr": true,
+            "ExposedPorts": {
+                "8000/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "NATS_URL=nats://nats:4222",
+                "PATH=/root/.local/bin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "LANG=C.UTF-8",
+                "GPG_KEY=A035C8C19219BA821ECEA86B64E628F8D684696D",
+                "PYTHON_VERSION=3.11.13",
+                "PYTHON_SHA256=8fb5f9fbc7609fa822cb31549884575db7fd9657cbffb89510b5d7975963a83a"
+            ],
+            "Cmd": [
+                "uvicorn",
+                "main:app",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "8000"
+            ],
+            "Image": "llm-audio-app-backend",
+            "Volumes": null,
+            "WorkingDir": "/app",
+            "Entrypoint": null,
+            "OnBuild": null,
+            "Labels": {
+                "com.docker.compose.config-hash": "e93857414ddf6fc54e611e8472c6db2d2cfaf34374463378fef2dac8808709bc",
+                "com.docker.compose.container-number": "1",
+                "com.docker.compose.depends_on": "nats:service_started:false",
+                "com.docker.compose.image": "sha256:720d41bf68ecc8d7f58967a4213870e903a9605aff613b4ff2a914d6808dac63",
+                "com.docker.compose.oneoff": "False",
+                "com.docker.compose.project": "llm-audio-app",
+                "com.docker.compose.project.config_files": "C:\\Users\\Personal\\CascadeProjects\\llm-audio-app\\docker-compose.yml",
+                "com.docker.compose.project.working_dir": "C:\\Users\\Personal\\CascadeProjects\\llm-audio-app",
+                "com.docker.compose.service": "backend",
+                "com.docker.compose.version": "2.35.1"
+            }
+        },
+        "NetworkSettings": {
+            "Bridge": "",
+            "SandboxID": "d8dc37fd97fd406f3c63ef6c9daa1a14715daafa248af71e0f52bac537f498fc",
+            "SandboxKey": "/var/run/docker/netns/d8dc37fd97fd",
+            "Ports": {
+                "8000/tcp": [
+                    {
+                        "HostIp": "0.0.0.0",
+                        "HostPort": "8000"
+                    }
+                ]
+            },
+            "HairpinMode": false,
+            "LinkLocalIPv6Address": "",
+            "LinkLocalIPv6PrefixLen": 0,
+            "SecondaryIPAddresses": null,
+            "SecondaryIPv6Addresses": null,
+            "EndpointID": "",
+            "Gateway": "",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "IPAddress": "",
+            "IPPrefixLen": 0,
+            "IPv6Gateway": "",
+            "MacAddress": "",
+            "Networks": {
+                "llm-audio-app_default": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": [
+                        "llm-audio-app-backend-1",
+                        "backend"
+                    ],
+                    "MacAddress": "32:56:c3:3d:2b:24",
+                    "DriverOpts": null,
+                    "GwPriority": 0,
+                    "NetworkID": "d232898a7d424232ace2b81e5a7fe5a86188335c13a19a5d6e567abab8ba5e2a",
+                    "EndpointID": "d2074c6a15b91e36106d85eb034bfbd97baef74280554bbca0b6c8e7137b54ed",
+                    "Gateway": "172.18.0.1",
+                    "IPAddress": "172.18.0.3",
+                    "IPPrefixLen": 16,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "DNSNames": [
+                        "llm-audio-app-backend-1",
+                        "backend",
+                        "01fbdc033525"
+                    ]
+                }
+            }
+        }
+    }
+]
+

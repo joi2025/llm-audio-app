@@ -1,0 +1,49 @@
+# Contexto del Proyecto LLM-Audio-App
+
+## Resumen General
+Este documento tiene como objetivo capturar el contexto completo del proyecto LLM-Audio-App, una aplicación de asistente de voz que utiliza tecnologías de inteligencia artificial para transcripción y síntesis de voz. El objetivo es identificar la estructura del proyecto, las configuraciones clave, y los posibles puntos de fallo que podrían estar causando problemas después de un reinicio de Windsurf.
+
+## Estructura del Proyecto
+- **Frontend**: Desarrollado en React con Vite, ubicado en `frontend/`. Contiene la interfaz de usuario, lógica para grabación de audio, conexión WebSocket, y síntesis de voz.
+- **Backend**: Desarrollado en Python con FastAPI, ubicado en `backend/`. Maneja la transcripción de audio (STT), generación de respuestas con LLM, y comunicación WebSocket con el frontend.
+
+## Configuraciones Clave
+- **Frontend**: 
+  - Puerto por defecto: 3001 (configurado en `vite.config.js` con `strictPort: true` para evitar cambios automáticos).
+  - URL de WebSocket: `ws://localhost:8000/ws/assistant` (actualizado para consistencia).
+  - Variables de entorno: Definidas en `.env`, incluyendo `VITE_WEBSOCKET_URL` y `VITE_OPENAI_API_KEY`.
+- **Backend**: 
+  - Puerto por defecto: 8000 (configurado en el script de inicio `uvicorn main:app --reload --port 8000`).
+  - Endpoint WebSocket: `/ws/assistant`.
+
+## Dependencias y APIs
+- **Frontend**: 
+  - React y Vite para la interfaz y desarrollo.
+  - API de OpenAI para síntesis de voz avanzada (Text-to-Speech).
+  - Web Speech API como fallback para síntesis de voz estándar.
+- **Backend**: 
+  - FastAPI y Uvicorn para el servidor.
+  - API de OpenAI para transcripción (Whisper) y generación de texto (ChatGPT, modelo `gpt-4.1-nano`).
+
+## Problemas Reportados
+- Desconexiones frecuentes de WebSocket (código 1006 - error desconocido).
+- Problemas de arranque después de reiniciar Windsurf, donde nada funciona.
+- Inconsistencias en los puertos causando errores de conexión.
+
+## Puntos de Fallo Potenciales
+- **Configuración de Puertos**: Inconsistencias entre los puertos configurados en el frontend y backend pueden causar fallos de conexión.
+- **WebSocket**: Problemas de estabilidad en la conexión entre frontend y backend, posiblemente debido a cierres abruptos del servidor o problemas de red.
+- **Claves API**: Si las claves de OpenAI no están configuradas correctamente en `.env`, la síntesis de voz avanzada fallará.
+- **Reinicio de Windsurf**: Puede haber afectado configuraciones o procesos en ejecución, dejando puertos ocupados o servicios no iniciados.
+
+## Scripts de Inicio
+- He creado `start_all.bat` para iniciar tanto el backend como el frontend de manera coordinada, asegurando que ambos servicios arranquen correctamente.
+
+## Próximos Pasos para Solución
+1. Verificar que ambos servidores (frontend y backend) estén corriendo en los puertos correctos (3001 y 8000 respectivamente).
+2. Revisar los logs en el panel de administración del frontend para identificar errores específicos de conexión o API.
+3. Asegurarse de que las claves API de OpenAI estén correctamente configuradas en `.env`.
+4. Implementar un script de inicio robusto que verifique la disponibilidad de puertos antes de iniciar los servidores.
+
+Este documento se actualizará a medida que se descubra más información sobre el proyecto y se resuelvan los problemas actuales.
+

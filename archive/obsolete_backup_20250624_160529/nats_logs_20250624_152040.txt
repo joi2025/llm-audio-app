@@ -1,0 +1,13 @@
+nats-1  | [1] 2025/06/24 13:22:14.736591 [INF] Starting nats-server
+nats-1  | [1] 2025/06/24 13:22:14.736700 [INF]   Version:  2.11.4
+nats-1  | [1] 2025/06/24 13:22:14.736708 [INF]   Git:      [4c2fc7f]
+nats-1  | [1] 2025/06/24 13:22:14.736712 [INF]   Cluster:  my_cluster
+nats-1  | [1] 2025/06/24 13:22:14.736715 [INF]   Name:     NADPDA32NCXJEBJJMEKBENFK7BLGP33VSHYROWXRLXSA3K2Y6QYPNJZ5
+nats-1  | [1] 2025/06/24 13:22:14.736718 [INF]   ID:       NADPDA32NCXJEBJJMEKBENFK7BLGP33VSHYROWXRLXSA3K2Y6QYPNJZ5
+nats-1  | [1] 2025/06/24 13:22:14.737144 [INF] Using configuration file: nats-server.conf (sha256:c7aaa34d64beb74e7c700fd3504b40b01deb1275f6567fb81ed3809ff03a5fe4)
+nats-1  | [1] 2025/06/24 13:22:14.741107 [INF] Starting http monitor on 0.0.0.0:8222
+nats-1  | [1] 2025/06/24 13:22:14.741672 [INF] Listening for client connections on 0.0.0.0:4222
+nats-1  | [1] 2025/06/24 13:22:14.742081 [INF] Server is ready
+nats-1  | [1] 2025/06/24 13:22:14.742352 [INF] Cluster name is my_cluster
+nats-1  | [1] 2025/06/24 13:22:14.742661 [INF] Listening for route connections on 0.0.0.0:6222
+

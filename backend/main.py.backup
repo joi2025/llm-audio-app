@@ -1,0 +1,252 @@
+from fastapi import FastAPI, WebSocket
+import uvicorn
+import logging
+import sys
+import os
+from dotenv import load_dotenv
+from openai import OpenAI
+import requests
+import time
+from fastapi.middleware.cors import CORSMiddleware
+from socketio import AsyncServer
+from socketio.asgi import ASGIApp
+from datetime import datetime
+import base64
+from services.stt_service import STTService
+from bus import setup_nats_subscriptions
+
+# Cargar variables de entorno
+load_dotenv()
+
+# Verificar API key al iniciar
+if not os.getenv('OPENAI_API_KEY'):
+    logger = logging.getLogger(__name__)
+    logger.error('OPENAI_API_KEY no está configurada en .env')
+    raise ValueError('Se requiere OPENAI_API_KEY')
+
+# Cliente OpenAI
+openai_client = OpenAI(
+    api_key=os.getenv('OPENAI_API_KEY'),
+    timeout=30.0  # Timeout aumentado
+)
+
+# Configuración avanzada de logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('backend.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Niveles de log por componente
+logging.getLogger('websockets').setLevel(logging.WARNING)
+logging.getLogger('openai').setLevel(logging.INFO)
+
+CONVERSATION_LOG = "conversations.log"
+
+def log_conversation(user_input, ai_response):
+    with open(CONVERSATION_LOG, "a", encoding="utf-8") as f:
+        f.write(f"[{datetime.now().isoformat()}] USER: {user_input}\n")
+        f.write(f"[{datetime.now().isoformat()}] AI: {ai_response}\n\n")
+
+def generate_audio(text, output_path, voice_settings=None):
+    import pyttsx3
+    engine = pyttsx3.init()
+    
+    # Configuración de voz
+    voices = engine.getProperty('voices')
+    spanish_voice = next((v for v in voices if 'spanish' in v.languages or 'es' in v.id.lower()), voices[0])
+    engine.setProperty('voice', spanish_voice.id)
+    
+    # Aplicar ajustes desde frontend
+    if voice_settings:
+        engine.setProperty('rate', 170 * voice_settings.get('rate', 1))
+        engine.setProperty('volume', voice_settings.get('volume', 0.9))
+        engine.setProperty('pitch', 110 * voice_settings.get('pitch', 1))
+    else:
+        engine.setProperty('rate', 170)
+        engine.setProperty('volume', 0.9)
+        engine.setProperty('pitch', 110)
+    
+    engine.save_to_file(text, output_path)
+    engine.runAndWait()
+    
+    # Debug: Mostrar voces disponibles
+    print("Voces disponibles:")
+    for i, voice in enumerate(voices):
+        print(f"{i}: {voice.name} | ID: {voice.id} | Idiomas: {getattr(voice, 'languages', 'Desconocido')}")
+
+app = FastAPI()
+stt_service = STTService(model_size="base")  # Modelo balanceado
+
+@app.on_event("startup")
+async def startup():
+    """Inicia conexiones y suscripciones NATS"""
+    await setup_nats_subscriptions()
+    logging.info("Servicio iniciado y suscripciones NATS activas")
+
+# Configura CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3001", "http://127.0.0.1:3001"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+sio = AsyncServer(async_mode='asgi', cors_allowed_origins=['http://localhost:3001'])
+socketio_app = ASGIApp(sio, app)
+
+# Configurar límite de tokens (ajustable desde .env)
+MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", 256))
+
+# Crear directorio static si no existe
+os.makedirs('static', exist_ok=True)
+
+@app.get("/")
+async def health_check():
+    return {"status": "ok", "message": "Backend running"}
+
+@app.websocket("/ws/audio")
+async def audio_stream(websocket: WebSocket):
+    await websocket.accept()
+    while True:
+        try:
+            audio = await websocket.receive_bytes()
+            transcription = await stt_service.transcribe(audio)
+            await websocket.send_text(f"TRANSCRIPCION: {transcription}")
+        except Exception as e:
+            logging.error(f"Error en WebSocket: {e}")
+            await websocket.send_text(f"ERROR: {str(e)}")
+            break
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    client_ip = websocket.client.host
+    logger.info(f"Nueva conexión WebSocket desde {client_ip}")
+    
+    try:
+        await websocket.accept()
+        
+        while True:
+            data = await websocket.receive_text()
+            logger.debug(f"Mensaje recibido (IP: {client_ip}): {data[:50]}..." if len(data) > 50 else f"Mensaje recibido: {data}")
+            
+            # 1. Enviar a OpenAI
+            logger.info("Iniciando consulta a OpenAI")
+            start_time = time.time()
+            stream = openai_client.chat.completions.create(
+                model=os.getenv("OPENAI_MODEL", "gpt-4"),
+                messages=[{"role": "user", "content": data}],
+                stream=True,
+                max_tokens=MAX_TOKENS if not data.get('long_response') else None
+            )
+            logger.info(f"OpenAI response time: {time.time()-start_time:.2f}s")
+            
+            full_response = ""
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    full_response += content
+                    await websocket.send_json({"content": content, "done": False})
+            
+            log_conversation(data, full_response)
+            
+            # 2. Convertir a voz con pyttsx3
+            audio_file = f"audio_{int(time.time())}.wav"
+            output_path = f"static/{audio_file}"
+            try:
+                generate_audio(full_response, output_path, data.get('voiceSettings'))
+                logger.info(f"Audio generado con pyttsx3: {audio_file}")
+                await websocket.send_json({
+                    "done": True,
+                    "full_response": full_response,
+                    "audio_path": f"/static/{audio_file}"
+                })
+            except Exception as e:
+                logger.error(f"Error en pyttsx3: {str(e)}")
+                await websocket.send_json({
+                    "done": True,
+                    "full_response": full_response,
+                    "audio_path": None
+                })
+                
+    except Exception as e:
+        logger.error(f"Error en WebSocket (IP: {client_ip}): {str(e)}", exc_info=True)
+        raise
+
+@sio.event
+async def connect(sid, environ):
+    logger.info(f"Cliente conectado: {sid}")
+
+@sio.event
+async def message(sid, data):
+    try:
+        logger.info(f"Mensaje recibido de {sid}: {data}")
+        
+        # Verificar si el mensaje tiene texto
+        if not data.get('text'):
+            await sio.emit('error', {'message': 'No se recibió texto'}, room=sid)
+            return
+            
+        # Manejo del stream (nueva API v1.0+)
+        stream = openai_client.chat.completions.create(
+            model=os.getenv("OPENAI_MODEL"),
+            messages=[{"role": "user", "content": data['text']}],
+            stream=True,
+            max_tokens=MAX_TOKENS if not data.get('long_response') else None
+        )
+        
+        full_response = ""
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                content = chunk.choices[0].delta.content
+                full_response += content
+                await sio.emit('response', {
+                    "content": content,
+                    "done": False
+                }, room=sid)
+        
+        log_conversation(data['text'], full_response)
+        
+        # 2. Generar audio con pyttsx3
+        audio_file = f"audio_{int(time.time())}.wav"
+        os.makedirs('static', exist_ok=True)
+        output_path = f"static/{audio_file}"
+
+        try:
+            generate_audio(full_response, output_path, data.get('voiceSettings'))
+            logger.info(f"Audio generado con pyttsx3: {audio_file}")
+            await sio.emit('audio_ready', {
+                "url": f"/static/{audio_file}",
+                "text": full_response
+            }, room=sid)
+        except Exception as e:
+            logger.error(f"Error en pyttsx3: {str(e)}")
+            await sio.emit('tts_error', {"message": "Error generando audio"}, room=sid)
+            
+    except Exception as e:
+        logger.error(f"Error procesando mensaje: {e}")
+        await sio.emit('error', {'message': str(e)}, room=sid)
+
+# Configuración del servidor
+HOST = os.getenv('HOST', '0.0.0.0')
+PORT = int(os.getenv('PORT', 8002))  # 8002 como valor por defecto
+
+if __name__ == "__main__":
+    try:
+        logger.info("=== Iniciando servidor ===")
+        logger.info(f"Iniciando servidor en host {HOST}, puerto {PORT}")
+        uvicorn.run(
+            "main:socketio_app",  # Usar socketio_app como aplicación ASGI
+            host=HOST,
+            port=PORT,
+            reload=True,
+            log_level="debug"
+        )
+    except Exception as e:
+        logger.error(f"Error al iniciar el servidor: {e}", exc_info=True)
+        raise
