@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os, asyncio
+from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import make_asgi_app
@@ -49,52 +50,52 @@ async def chat_endpoint(
         text: Text input (optional)
         
     Returns:
-        Chat response
+        Chat response with text and audio URL
     """
-    if not audio and not text:
-        raise HTTPException(400, "Either audio or text must be provided")
-    
-    from src.llm_client import LLMClient
-    from src.tts import synthesize
-    from src.audio_utils import record, save_wav
-    
-    # Get LLM client
-    llm = LLMClient(
-        provider=os.getenv("LLM_PROVIDER", "openai"),
-        model=os.getenv("LLM_MODEL", "gpt-3.5-turbo")
-    )
-    
-    # Process input
-    if audio:
-        # Transcribe audio
-        from src.stt import transcribe
-        tmp = Path("/tmp") / audio.filename
-        try:
-            tmp.write_bytes(await audio.read())
-            transcript = await transcribe(str(tmp))
-            user_input = transcript["text"]
-        finally:
-            tmp.unlink()
-    else:
-        user_input = text
-    
-    # Get chat response
-    messages = [
-        {"role": "user", "content": user_input}
-    ]
-    response = await llm.chat(messages)
-    
-    # Synthesize response
-    audio_response = await synthesize(response)
-    
-    # Save audio response
-    tmp_wav = Path("/tmp") / "response.wav"
-    await save_wav(audio_response, tmp_wav)
-    
-    return {
-        "text": response,
-        "audio_url": f"/tmp/{tmp_wav.name}"
-    }
+    try:
+        if not audio and not text:
+            raise HTTPException(400, "Either audio or text must be provided")
+        
+        # Get LLM client
+        llm = LLMClient(
+            provider=os.getenv("LLM_PROVIDER", "openai"),
+            model=os.getenv("LLM_MODEL", "gpt-3.5-turbo")
+        )
+        
+        # Process input
+        if audio:
+            # Transcribe audio
+            from src.stt import transcribe
+            tmp = Path("/tmp") / audio.filename
+            try:
+                tmp.write_bytes(await audio.read())
+                transcript = await transcribe(str(tmp))
+                user_input = transcript["text"]
+            finally:
+                tmp.unlink()
+        else:
+            user_input = text
+        
+        # Get chat response
+        messages = [
+            {"role": "user", "content": user_input}
+        ]
+        response = await llm.chat(messages)
+        
+        # Synthesize response
+        audio_response = await synthesize(response)
+        
+        # Save audio response
+        tmp_wav = Path("/tmp") / "response.wav"
+        await save_wav(audio_response, tmp_wav)
+        
+        return {
+            "text": response,
+            "audio_url": f"/tmp/{tmp_wav.name}"
+        }
+    except Exception as e:
+        logger.error("Error in chat endpoint", error=str(e))
+        raise HTTPException(500, f"Internal server error: {str(e)}")
 
 @app.get("/health")
 async def health():

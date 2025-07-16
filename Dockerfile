@@ -21,4 +21,4 @@ RUN pip install --no-cache-dir -e .
 ENV PYTHONPATH=/app
 
 # Run the application
-CMD ["poetry", "run", "python", "-m", "src.api.main"]
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
