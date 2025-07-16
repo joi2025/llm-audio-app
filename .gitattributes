@@ -1,0 +1,6 @@
+# Configuración de finales de línea
+* text=auto eol=lf
+*.{cmd,[cC][mM][dD]} text eol=crlf
+*.{bat,[bB][aA][tT]} text eol=crlf
+*.ps1 text eol=lf
+*.sh text eol=lf
