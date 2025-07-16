@@ -1,24 +1,21 @@
 FROM python:3.11-slim
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    cmake \
-    git \
-    curl \
+WORKDIR /app
+
+# Instalar dependencias del sistema
+RUN apt-get update && apt-get install -y \
     ffmpeg \
-    sox \
     alsa-utils \
     libasound2-dev \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-WORKDIR /app
-COPY pyproject.toml poetry.lock ./
-RUN pip install poetry && poetry install
+# Copiar código fuente
+COPY pyproject.toml ./
+COPY src/ ./src/
 
-# Copy application code
-COPY . .
+# Instalar dependencias
+RUN pip install --no-cache-dir -e .
 
 # Set environment variables
 ENV PYTHONPATH=/app
