@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   app:
     build: .
@@ -12,11 +10,11 @@ services:
       - PYTHONPATH=/app
       - ENVIRONMENT=production
       - DEBUG=false
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-your-openai-api-key}
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-3.5-turbo}
-      - WHISPER_MODEL=${WHISPER_MODEL:-tiny}
-      - TTS_PROVIDER=${TTS_PROVIDER:-edge}
-      - TTS_VOICE=${TTS_VOICE:-en-US}
+      - OPENAI_API_KEY=sk-dummy-replace-at-runtime
+      - OPENAI_MODEL=gpt-3.5-turbo
+      - WHISPER_MODEL=tiny
+      - TTS_PROVIDER=edge
+      - TTS_VOICE=en-US
       - LOG_LEVEL=INFO
       - CORS_ORIGINS=*
     devices:

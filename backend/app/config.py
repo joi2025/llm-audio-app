@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     LOG_FILE: str = "app.log"
     
     # OpenAI
-    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_API_KEY: str = "sk-dummy-replace-at-runtime"
     OPENAI_MODEL: str = "gpt-4.1-nano"
     OPENAI_TEMPERATURE: float = 0.7
     OPENAI_MAX_TOKENS: int = 256
@@ -40,7 +40,6 @@ class Settings(BaseSettings):
     CONVERSATION_LOG: Path = BASE_DIR / "conversations.log"
     
     class Config:
-        env_file = ".env"
         case_sensitive = True
         env_file_encoding = 'utf-8'
 
