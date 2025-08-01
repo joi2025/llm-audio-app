@@ -1,0 +1,45 @@
+.audio-recorder {
+  margin: 20px 0;
+  text-align: center;
+}
+
+.audio-recorder button {
+  background-color: #ff6b6b;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  font-size: 16px;
+  border-radius: 25px;
+  cursor: pointer;
+  transition:
+    background-color 0.3s,
+    transform 0.1s;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.audio-recorder button:hover:not(:disabled) {
+  background-color: #ff4c4c;
+  transform: translateY(-2px);
+}
+
+.audio-recorder button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+.audio-recorder button.recording {
+  background-color: #4caf50;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}

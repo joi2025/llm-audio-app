@@ -1,0 +1,183 @@
+.admin-panel {
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.admin-header {
+  margin-bottom: 20px;
+  border-bottom: 1px solid #e0e0e0;
+  padding-bottom: 10px;
+}
+
+.admin-header h2 {
+  margin: 0;
+  color: #333;
+  font-size: 20px;
+}
+
+.tab-navigation {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.tab-navigation button {
+  background-color: #f0f0f0;
+  color: #555;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  font-size: 14px;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
+}
+
+.tab-navigation button.active {
+  background-color: #4caf50;
+  color: white;
+}
+
+.tab-navigation button:hover:not(.active) {
+  background-color: #e0e0e0;
+}
+
+.admin-content {
+  margin-top: 20px;
+}
+
+.conversations-tab,
+.logs-tab,
+.settings-tab {
+  padding: 10px;
+}
+
+.history-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.history-controls h3,
+.logs-tab h3,
+.settings-tab h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #333;
+}
+
+.clear-btn {
+  background-color: #f44336;
+}
+
+.clear-btn:hover {
+  background-color: #d32f2f;
+}
+
+.conversation-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 10px;
+  background-color: #f9f9f9;
+}
+
+.message {
+  margin-bottom: 10px;
+  padding: 8px;
+  border-radius: 4px;
+}
+
+.message.user {
+  background-color: #e3f2fd;
+  border-left: 3px solid #2196f3;
+}
+
+.message.assistant {
+  background-color: #f1f8e9;
+  border-left: 3px solid #4caf50;
+}
+
+.log-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 10px;
+  background-color: #f9f9f9;
+  font-family: monospace;
+}
+
+.log-entry {
+  margin-bottom: 8px;
+  padding: 5px;
+  border-radius: 3px;
+}
+
+.log-entry.info {
+  color: #333;
+}
+
+.log-entry.success {
+  color: #4caf50;
+}
+
+.log-entry.warn {
+  color: #ff9800;
+}
+
+.log-entry.error {
+  color: #f44336;
+}
+
+.log-timestamp {
+  color: #888;
+  margin-right: 5px;
+}
+
+.log-details {
+  margin-top: 5px;
+  color: #666;
+  font-size: 12px;
+  background-color: #eee;
+  padding: 5px;
+  border-radius: 3px;
+}
+
+.setting-group {
+  margin-bottom: 15px;
+}
+
+.setting-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.setting-group select,
+.setting-group input[type="range"] {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.setting-group input[type="range"] {
+  padding: 0;
+}
+
+.save-btn {
+  background-color: #2196f3;
+  margin-top: 15px;
+}
+
+.save-btn:hover {
+  background-color: #1976d2;
+}

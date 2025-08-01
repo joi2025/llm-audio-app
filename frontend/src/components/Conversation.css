@@ -1,0 +1,36 @@
+.conversation {
+  display: flex;
+  flex-direction: column;
+}
+
+.message {
+  padding: 8px;
+  border-radius: 5px;
+  max-width: 80%;
+}
+
+.message.user {
+  align-self: flex-start;
+  background-color: #e3f2fd;
+  color: #333;
+}
+
+.message.assistant {
+  align-self: flex-end;
+  background-color: #f5f5f5;
+  color: #333;
+}
+
+.empty-conversation {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: #666;
+}
+
+.loading-indicator {
+  margin-top: 10px;
+  color: #666;
+  font-style: italic;
+}
