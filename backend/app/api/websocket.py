@@ -20,6 +20,8 @@ def init_ws(sock):
         audio_chunks: List[bytes] = []
         last_ping = time.time()
         settings = _load_settings()
+        last_meta = {}
+        chunk_count = 0
 
         def send(obj):
             try:
@@ -42,6 +44,8 @@ def init_ws(sock):
                     continue
 
                 mtype = msg.get('type')
+                if isinstance(msg.get('meta'), dict):
+                    last_meta = msg.get('meta') or last_meta
 
                 if mtype == 'ping':
                     last_ping = time.time()
@@ -53,15 +57,27 @@ def init_ws(sock):
                     b64 = msg.get('data')
                     if b64:
                         try:
-                            audio_chunks.append(base64.b64decode(b64))
+                            decoded = base64.b64decode(b64)
+                            audio_chunks.append(decoded)
+                            chunk_count += 1
+                            try:
+                                add_log('websocket', f'audio_chunk: {len(decoded)} bytes (total_chunks={chunk_count})')
+                            except Exception:
+                                pass
                         except Exception:
-                            send({ 'type': 'error', 'message': 'invalid audio chunk' })
+                            send({ 'type': 'error', 'message': 'invalid audio chunk: bad base64' })
                     continue
 
                 if mtype == 'audio_end':
                     # Build a single WebM/Opus file by concatenation
                     audio_bytes = b''.join(audio_chunks)
+                    total_bytes = len(audio_bytes)
                     audio_chunks.clear()
+                    try:
+                        add_log('websocket', f'audio_end: chunks={chunk_count}, bytes={total_bytes}, meta={last_meta}')
+                    except Exception:
+                        pass
+                    chunk_count = 0
 
                     if not audio_bytes:
                         send({ 'type': 'result', 'transcription': '', 'message': 'no audio received' })
@@ -69,8 +85,14 @@ def init_ws(sock):
 
                     # Try STT + Chat + TTS if API key present, otherwise fallback
                     if not api_key:
-                        add_message('assistant', 'Audio recibido')
-                        send({ 'type': 'result', 'transcription': 'Audio recibido', 'from': 'assistant' })
+                        try:
+                            add_log('websocket', f'NO API KEY: audio received {total_bytes} bytes, sending fallback response')
+                        except Exception:
+                            pass
+                        add_message('assistant', 'Audio recibido - configurar OPENAI_API_KEY para transcripción')
+                        send({ 'type': 'result_stt', 'transcription': '[Sin API key]', 'from': 'user' })
+                        send({ 'type': 'result_llm', 'transcription': 'Audio recibido correctamente. Configurar OPENAI_API_KEY en backend/.env para transcripción y respuesta de voz.', 'from': 'assistant' })
+                        send({ 'type': 'tts_end' })
                         continue
 
                     # STT
@@ -81,6 +103,10 @@ def init_ws(sock):
                         send({ 'type': 'result_stt', 'transcription': text, 'from': 'user' })
                         if text:
                             add_message('user', text, tokens_in=_approx_tokens(text))
+                        try:
+                            add_log('websocket', f'STT ok: len={len(text)} text="{(text[:120] + "…") if len(text)>120 else text}"')
+                        except Exception:
+                            pass
                     except Exception as e:
                         send({ 'type': 'error', 'stage': 'stt', 'message': str(e) })
 
@@ -89,13 +115,20 @@ def init_ws(sock):
                     if text:
                         try:
                             model = _select_chat_model(cfg, settings)
-                            reply = _chat_openai(base_url, api_key, model, text)
+                            # If client hints short answer, include a soft instruction
+                            pref_short = bool(last_meta.get('prefer_short_answer')) if isinstance(last_meta, dict) else False
+                            prompt = text if not pref_short else (text + "\n\nResponde de forma breve y directa.")
+                            reply = _chat_openai(base_url, api_key, model, prompt)
                             send({ 'type': 'result_llm', 'transcription': reply, 'from': 'assistant' })
                             if reply:
                                 t_in = _approx_tokens(text)
                                 t_out = _approx_tokens(reply)
                                 cost = _estimate_cost(settings, t_in, t_out)
                                 add_message('assistant', reply, tokens_in=t_in, tokens_out=t_out, cost=cost)
+                            try:
+                                add_log('websocket', f'LLM ok: model={model} len={len(reply)}')
+                            except Exception:
+                                pass
                         except Exception as e:
                             send({ 'type': 'error', 'stage': 'chat', 'message': str(e) })
 
@@ -106,6 +139,11 @@ def init_ws(sock):
                             audio_mp3 = _tts_openai(base_url, api_key, tts_model, voice_name, reply)
                             b64 = base64.b64encode(audio_mp3).decode('ascii')
                             send({ 'type': 'audio', 'audio': b64 })
+                            send({ 'type': 'tts_end' })
+                            try:
+                                add_log('websocket', f'TTS ok: model={tts_model} voice={voice_name} bytes={len(audio_mp3)}')
+                            except Exception:
+                                pass
                         except Exception as e:
                             send({ 'type': 'error', 'stage': 'tts', 'message': str(e) })
                     continue
@@ -136,6 +174,7 @@ def init_ws(sock):
                         audio_mp3 = _tts_openai(base_url, api_key, tts_model, voice_name, reply)
                         b64 = base64.b64encode(audio_mp3).decode('ascii')
                         send({ 'type': 'audio', 'audio': b64 })
+                        send({ 'type': 'tts_end' })
                     except Exception as e:
                         send({ 'type': 'error', 'stage': 'chat_tts', 'message': str(e) })
                     continue

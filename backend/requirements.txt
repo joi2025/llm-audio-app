@@ -5,3 +5,5 @@ python-dotenv==1.0.1
 requests==2.31.0
 Werkzeug==2.3.8
 simple-websocket==0.10.1
+gevent==24.2.1
+gevent-websocket==0.10.1

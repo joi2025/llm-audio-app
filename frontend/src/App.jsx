@@ -71,6 +71,19 @@ export default function App() {
     keepAliveSec: 25,
   })
 
+  // Avoid two concurrent sockets: when using v2 voice screen, disconnect the global one
+  useEffect(() => {
+    if (mode === 'v2') {
+      disconnect()
+    }
+  }, [mode, disconnect])
+
+  useEffect(() => {
+    if (mode !== 'v2' && state !== 'open') {
+      connect()
+    }
+  }, [mode, state, connect])
+
   const handleSendText = () => {
     const text = pendingText.trim()
     if (!text) return

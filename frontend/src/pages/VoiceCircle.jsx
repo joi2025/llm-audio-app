@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import useWebSocket from '../hooks/useWebSocket'
 import VoiceAvatar from '../components/VoiceAvatar'
 import useMicVAD from '../hooks/useMicVAD'
@@ -19,7 +19,10 @@ export default function VoiceCircle({ wsUrl }) {
         el.pause()
         el.src && URL.revokeObjectURL(el.src)
         el.src = url
-        el.onended = () => setUiState('idle')
+        el.onended = () => {
+          console.debug('[v2] audio playback ended, ready for next interaction')
+          setUiState('idle')
+        }
         el.play().catch(()=>{})
       }
       setUiState('speaking')
@@ -28,28 +31,37 @@ export default function VoiceCircle({ wsUrl }) {
 
   const { handleWSMessageFactory, interruptTTSFactory } = useAgentVoice({ setUiState, onAudio })
 
-  const [handleWSMessage, setHandleWSMessage] = useState(() => () => {})
-  const [interruptTTS, setInterruptTTS] = useState(() => () => {})
+  // use refs for handlers to avoid re-renders and hook-order mismatches
+  const handleWSMessageRef = useRef(() => {})
+  const interruptTTSRef = useRef(() => {})
 
   const { sendJson, state: wsState } = useWebSocket(wsUrl, {
     autoConnect: true,
     keepAliveSec: 25,
-    onMessage: (raw) => handleWSMessage(raw),
+    onMessage: (raw) => handleWSMessageRef.current(raw),
   })
 
   // Tie factories (need sendJson available)
   useEffect(() => {
-    setHandleWSMessage(() => handleWSMessageFactory({ sendJson }))
-    setInterruptTTS(() => interruptTTSFactory({ sendJson, audioEl: audioRef.current }))
+    handleWSMessageRef.current = handleWSMessageFactory({ sendJson })
+    interruptTTSRef.current = interruptTTSFactory({ sendJson, audioEl: audioRef.current })
   }, [handleWSMessageFactory, interruptTTSFactory, sendJson])
 
   const { startListening, stopListening, listening } = useMicVAD({
-    onChunk: (base64) => sendJson({ type: 'audio_chunk', data: base64, meta: { mode: 'v2-voice' } }),
-    onSilenceEnd: () => {
+    streaming: false,
+    onFinal: (base64) => {
+      console.debug('[v2] final blob size(b64)=', base64?.length)
+      sendJson({ type: 'audio_chunk', data: base64, mime: 'audio/webm;codecs=opus', size_b64: base64?.length, meta: { mode: 'v2-voice' } })
       sendJson({ type: 'audio_end', meta: { mode: 'v2-voice', prefer_short_answer: true } })
+    },
+    onSilenceEnd: () => {
+      console.debug('[v2] silencio sostenido -> processing')
       setUiState('processing')
     },
     onLevel: setLevel,
+    rmsThreshold: 0.01,
+    maxSilenceMs: 900,
+    chunkMs: 400,
   })
 
   useEffect(() => {
@@ -59,16 +71,20 @@ export default function VoiceCircle({ wsUrl }) {
 
   const onTap = () => {
     if (uiState === 'speaking') {
-      interruptTTS()
+      console.debug('[v2] tap while speaking -> interrupt TTS + listen')
+      interruptTTSRef.current()
       startListening()
       setUiState('listening')
       return
     }
     if (uiState === 'listening') {
-      stopListening(true) // force send
+      console.debug('[v2] tap durante escucha -> stop')
+      stopListening(true) // onFinal enviará chunk + audio_end
+      setUiState('processing')
       return
     }
     // idle / processing -> start listening
+    console.debug('[v2] tap -> start listening')
     startListening()
     setUiState('listening')
   }

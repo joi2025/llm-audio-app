@@ -16,6 +16,7 @@ export default function useWebSocket(url, opts = {}) {
   const attemptsRef = useRef(0)
   const kaTimerRef = useRef(null)
   const reconnectTimerRef = useRef(null)
+  const manualCloseRef = useRef(false)
 
   const cleanup = useCallback(() => {
     if (kaTimerRef.current) { clearInterval(kaTimerRef.current); kaTimerRef.current = null }
@@ -23,6 +24,7 @@ export default function useWebSocket(url, opts = {}) {
   }, [])
 
   const scheduleReconnect = useCallback(() => {
+    if (manualCloseRef.current) return
     if (attemptsRef.current >= retry.maxAttempts) return
     const delay = Math.min(retry.backoffBaseMs * Math.pow(2, attemptsRef.current), retry.backoffMaxMs)
     reconnectTimerRef.current = setTimeout(() => {
@@ -33,6 +35,7 @@ export default function useWebSocket(url, opts = {}) {
 
   const connect = useCallback(() => {
     cleanup()
+    manualCloseRef.current = false
     setState('connecting')
     try {
       const ws = new WebSocket(url)
@@ -44,7 +47,9 @@ export default function useWebSocket(url, opts = {}) {
         if (typeof onOpen === 'function') onOpen()
         if (keepAliveSec > 0) {
           kaTimerRef.current = setInterval(() => {
-            try { ws.send(JSON.stringify({ type: 'ping', t: Date.now() })) } catch {}
+            if (ws.readyState === WebSocket.OPEN) {
+              try { ws.send(JSON.stringify({ type: 'ping', t: Date.now() })) } catch {}
+            }
           }, keepAliveSec * 1000)
         }
       }
@@ -54,10 +59,13 @@ export default function useWebSocket(url, opts = {}) {
       }
 
       ws.onerror = (ev) => {
+        // Ensure no stray timers survive an error
+        cleanup()
         if (typeof onError === 'function') onError(ev)
       }
 
       ws.onclose = () => {
+        cleanup()
         setState('closed')
         if (typeof onClose === 'function') onClose()
         scheduleReconnect()
@@ -71,6 +79,7 @@ export default function useWebSocket(url, opts = {}) {
 
   const disconnect = useCallback(() => {
     cleanup()
+    manualCloseRef.current = true
     try { wsRef.current?.close() } catch {}
     setState('closed')
   }, [cleanup])
