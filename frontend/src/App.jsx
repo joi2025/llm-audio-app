@@ -5,11 +5,12 @@ import AudioPlayer from './components/AudioPlayer'
 import ConversationHistory from './components/ConversationHistory'
 import LogsPanel from './components/LogsPanel'
 import AdminPanel from './components/AdminPanel'
+import VoiceCircle from './pages/VoiceCircle'
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8001/ws/assistant'
 
 export default function App() {
-  const [mode, setMode] = useState('user') // 'user' | 'admin'
+  const [mode, setMode] = useState('user') // 'user' | 'admin' | 'v2'
   const [connected, setConnected] = useState(false)
   const [logs, setLogs] = useState([])
   const [messages, setMessages] = useState([])
@@ -107,6 +108,7 @@ export default function App() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => setMode('user')} disabled={mode==='user'}>Usuario</button>
+          <button onClick={() => setMode('v2')} disabled={mode==='v2'}>v2 Voz</button>
           <button onClick={() => setMode('admin')} disabled={mode==='admin'}>Admin</button>
         </div>
       </section>
@@ -143,8 +145,10 @@ export default function App() {
             </div>
           </section>
         </>
-      ) : (
+      ) : mode === 'admin' ? (
         <AdminPanel />
+      ) : (
+        <VoiceCircle wsUrl={WS_URL} />
       )}
 
       <footer>
