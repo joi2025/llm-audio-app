@@ -1,16 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import useWebSocket from './hooks/useWebSocket'
+import useSocketIO from './hooks/useSocketIO'
 import AudioRecorder from './components/AudioRecorder'
 import AudioPlayer from './components/AudioPlayer'
 import ConversationHistory from './components/ConversationHistory'
 import LogsPanel from './components/LogsPanel'
 import AdminPanel from './components/AdminPanel'
 import VoiceCircle from './pages/VoiceCircle'
+import VoiceCircleV2 from './components/VoiceCircleV2'
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8001/ws/assistant'
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001'
 
 export default function App() {
-  const [mode, setMode] = useState('user') // 'user' | 'admin' | 'v2'
+  const [mode, setMode] = useState('user') // 'user' | 'admin' | 'v2' | 'v2-auto'
   const [connected, setConnected] = useState(false)
   const [logs, setLogs] = useState([])
   const [messages, setMessages] = useState([])
@@ -61,34 +62,43 @@ export default function App() {
     }
   }, [addLog])
 
-  const { connect, disconnect, sendJson, state } = useWebSocket(WS_URL, {
+  const { connect, disconnect, emit, isConnected } = useSocketIO(BACKEND_URL, {
     autoConnect: true,
-    retry: { maxAttempts: Infinity, backoffBaseMs: 800, backoffMaxMs: 8000 },
-    onOpen: () => { setConnected(true); addLog('WebSocket: open') },
-    onClose: () => { setConnected(false); addLog('WebSocket: close') },
-    onError: (e) => addLog(`WebSocket error: ${e?.message || e}`),
+    onConnect: () => { setConnected(true); addLog('Socket.IO: connected') },
+    onDisconnect: () => { setConnected(false); addLog('Socket.IO: disconnected') },
+    onError: (e) => addLog(`Socket.IO error: ${e?.message || e}`),
     onMessage,
-    keepAliveSec: 25,
   })
 
-  // Avoid two concurrent sockets: when using v2 voice screen, disconnect the global one
+  // Simple wrapper used by AudioRecorder callbacks
+  const sendJson = useCallback((payload) => {
+    try {
+      if (!payload || !payload.type) return
+      // emit(event, data)
+      emit(payload.type, payload.data ?? payload)
+    } catch (e) {
+      addLog(`sendJson error: ${e?.message || e}`)
+    }
+  }, [emit, addLog])
+
+  // Avoid two concurrent sockets: when using v2 or v2-auto screens, disconnect the global one
   useEffect(() => {
-    if (mode === 'v2') {
+    if (mode === 'v2' || mode === 'v2-auto') {
       disconnect()
     }
   }, [mode, disconnect])
 
   useEffect(() => {
-    if (mode !== 'v2' && state !== 'open') {
+    if (mode !== 'v2' && mode !== 'v2-auto' && !isConnected) {
       connect()
     }
-  }, [mode, state, connect])
+  }, [mode, isConnected, connect])
 
   const handleSendText = () => {
     const text = pendingText.trim()
     if (!text) return
     setMessages((m) => [...m, { role: 'user', text }])
-    sendJson({ type: 'user_text', text })
+    emit('user_text', { text })
     setPendingText('')
   }
 
@@ -122,6 +132,11 @@ export default function App() {
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => setMode('user')} disabled={mode==='user'}>Usuario</button>
           <button onClick={() => setMode('v2')} disabled={mode==='v2'}>v2 Voz</button>
+          <button onClick={() => setMode('v2-auto')} disabled={mode==='v2-auto'} style={{
+            background: mode === 'v2-auto' ? 'linear-gradient(135deg, #10b981, #059669)' : '',
+            color: mode === 'v2-auto' ? 'white' : '',
+            fontWeight: mode === 'v2-auto' ? 'bold' : 'normal'
+          }}>🤖 v2 Auto</button>
           <button onClick={() => setMode('admin')} disabled={mode==='admin'}>Admin</button>
         </div>
       </section>
@@ -160,12 +175,16 @@ export default function App() {
         </>
       ) : mode === 'admin' ? (
         <AdminPanel />
+      ) : mode === 'v2-auto' ? (
+        <VoiceCircleV2 wsUrl={BACKEND_URL} autoMode={true} />
+      ) : mode === 'v2' ? (
+        <VoiceCircleV2 wsUrl={BACKEND_URL} />
       ) : (
-        <VoiceCircle wsUrl={WS_URL} />
+        <VoiceCircle wsUrl={BACKEND_URL} />
       )}
 
       <footer>
-        <small>WS: {WS_URL}</small>
+        <small>Backend: {BACKEND_URL}</small>
       </footer>
     </div>
   )

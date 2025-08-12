@@ -1,10 +1,233 @@
-# LLM Audio App (Voice Advance / Pro Admin)
+# 🎤 LLM Audio App - Asistente de Voz Inteligente
 
-A full-stack voice assistant with:
-- React + Vite frontend (User and Admin modes)
-- Flask backend with WebSocket for realtime audio
-- OpenAI STT (Whisper), Chat (GPT-4o family), and TTS
-- SQLite for conversations/logs/settings
+**Versión 2.0 - Con Sistema de Personalidades Avanzado y Detección Automática**
+
+Un asistente de voz completo con reconocimiento automático de habla, procesamiento LLM inteligente, síntesis de voz optimizada para español, y sistema de personalidades estilo Grok.
+
+## ✨ Características Principales
+
+### 🎭 **Sistema de Personalidades Avanzado**
+- **15 personalidades únicas** organizadas en 5 categorías
+- **Voces OpenAI optimizadas** para cada personalidad
+- **System prompts personalizados** para experiencias únicas
+- **Interfaz visual moderna** con colores y emojis distintivos
+
+### 🤖 **Detección Automática de Voz (v2 Auto)**
+- **Sin botones**: Detección automática por silencios
+- **Interrupciones naturales** durante respuestas del asistente
+- **Optimizado para español** con baja latencia
+- **Modo manual** disponible como alternativa
+
+### 🔧 **Panel de Administración Renovado**
+- **Interfaz con pestañas** para mejor organización
+- **Verificador de API Key** integrado
+- **Configuración técnica** completa
+- **Logs y conversaciones** en tiempo real
+
+### 🌐 **Arquitectura Moderna**
+- **Backend**: Flask-SocketIO para WebSocket estable
+- **Frontend**: React con hooks optimizados
+- **Comunicación**: SocketIO para tiempo real
+- **Persistencia**: localStorage para configuraciones
+
+## 🎭 Personalidades Disponibles
+
+### 😄 **Divertidos**
+- **😂 Comediante**: Humor inteligente y chistes ingeniosos
+- **🤪 Rey de Memes**: Cultura meme y humor generacional
+- **🙄 Sarcástico**: Sarcasmo inteligente e ironía sutil
+
+### 🎓 **Profesionales**
+- **🎓 Profesor Universitario**: Explicaciones académicas claras
+- **💼 Consultor Ejecutivo**: Consejos estratégicos empresariales
+- **🔬 Científico**: Análisis riguroso y metodológico
+
+### 💫 **Sensuales**
+- **💕 Romántico**: Tono encantador y cálido
+- **🌙 Misterioso**: Respuestas enigmáticas e intrigantes
+- **😏 Seguro de Sí Mismo**: Confianza y carisma
+
+### 🧠 **Serios**
+- **🤔 Filósofo**: Reflexiones profundas y sabiduría
+- **📊 Analista**: Datos precisos y análisis detallado
+- **🧙‍♂️ Mentor Sabio**: Guía sabia y experiencia
+
+### 🎨 **Creativos**
+- **🎨 Artista Bohemio**: Creatividad e inspiración artística
+- **📚 Narrador**: Historias cautivadoras y narrativa
+
+## 🚀 Inicio Rápido
+
+### **🔧 Setup Inicial (Solo Primera Vez)**
+```powershell
+# Configuración automática completa del sistema
+.\setup.ps1
+```
+
+### **🚀 Inicio del Sistema (Recomendado)**
+```powershell
+# Iniciar sistema completo automáticamente
+.\start.ps1
+
+# Opciones adicionales:
+.\start.ps1 -Silent    # Sin output detallado
+.\start.ps1 -NoOpen    # No abrir navegador automáticamente
+```
+
+### **🛑 Detener Sistema**
+```powershell
+# Detención segura y limpieza completa
+.\stop.ps1
+
+# Opciones adicionales:
+.\stop.ps1 -Force      # Detención forzada
+.\stop.ps1 -KeepLogs   # Mantener archivos de log
+```
+
+### **⚡ Scripts Disponibles**
+| Script | Descripción | Uso |
+|--------|-------------|-----|
+| `setup.ps1` | Configuración inicial automática | Solo primera vez |
+| `start.ps1` | Inicio completo del sistema | Uso diario |
+| `stop.ps1` | Detención segura y limpieza | Cuando termines |
+| `start_production.ps1` | Script legacy (usar start.ps1) | Alternativo |
+
+## ⚙️ Configuración
+
+### **Variables de Entorno (.env)**
+```env
+OPENAI_API_KEY=tu_api_key_aqui
+OPENAI_BASE_URL=https://api.openai.com/v1
+BACKEND_PORT=8001
+FRONTEND_PORT=3001
+DEFAULT_VOICE=nova
+DEFAULT_MODEL=gpt-4o-mini
+```
+
+## 🎯 Modos de Uso
+
+### **🤖 v2 Auto (Recomendado)**
+- Detección automática de voz por silencios
+- Interrupciones naturales
+- Optimizado para conversaciones fluidas
+- Sin necesidad de botones
+
+### **👆 v2 Voz (Manual)**
+- Control manual con botón
+- Ideal para entornos ruidosos
+- Mayor control sobre la grabación
+
+### **💻 Usuario (Clásico)**
+- Interfaz tradicional con grabación manual
+- Chat de texto disponible
+- Historial de conversaciones visible
+
+### **🛠️ Admin**
+- Panel de administración completo
+- Configuración de personalidades
+- Monitoreo de logs y conversaciones
+- Verificación de API Key
+
+## 🔧 Optimizaciones Implementadas
+
+### **Para Español**
+- Voces OpenAI optimizadas (Nova por defecto)
+- System prompts en español
+- Configuración de temperatura ajustada (0.6)
+- Pausas naturales en TTS
+
+### **Para Eficiencia**
+- Tokens reducidos (120 max por defecto)
+- Penalties para evitar repeticiones
+- Detección VAD optimizada
+- Conexiones SocketIO estables
+
+### **Para UX**
+- Interfaz moderna con gradientes
+- Estados visuales claros
+- Responsive design
+- Persistencia de configuraciones
+
+## 📊 Arquitectura Técnica
+
+```
+Frontend (React + Vite)
+├── hooks/
+│   ├── usePersonality.js     # Gestión de personalidades
+│   ├── useAutoVoice.js       # Detección automática
+│   ├── useSocketIO.js        # Comunicación tiempo real
+│   └── useMicVAD.js         # Voice Activity Detection
+├── pages/
+│   ├── VoiceCircleV2.jsx    # Interfaz v2 con auto-detección
+│   └── VoiceCircle.jsx      # Interfaz v1 manual
+├── components/
+│   ├── AdminPanelNew.jsx    # Panel admin renovado
+│   └── VoiceAvatar.jsx      # Círculo de voz visual
+└── data/
+    └── personalities.js      # Base de datos personalidades
+
+Backend (Flask + SocketIO)
+├── app/api/
+│   └── websocket_socketio.py # Handlers SocketIO optimizados
+├── app/services/
+│   ├── openai_service.py    # Integración OpenAI
+│   └── database.py          # SQLite para persistencia
+└── run.py                   # Servidor principal
+```
+
+## 🎤 Voces Optimizadas para Español
+
+| Voz | Personalidades | Descripción |
+|-----|---------------|-------------|
+| **Nova** | Comediante, Consultor | Voz femenina clara, ideal para español |
+| **Alloy** | Rey de Memes, Profesor | Voz equilibrada y versátil |
+| **Echo** | Científico, Analista | Voz masculina clara y profesional |
+| **Onyx** | Sarcástico, Mentor | Voz masculina profunda y autoritaria |
+| **Shimmer** | Romántico, Artista | Voz femenina suave y expresiva |
+| **Fable** | Misterioso, Narrador | Voz expresiva con carácter único |
+
+## 🔒 Seguridad y Mejores Prácticas
+
+- API Keys nunca hardcodeadas
+- Variables de entorno para configuración
+- Validación de entrada en backend
+- Manejo de errores robusto
+- Logs detallados para debugging
+
+## 🚀 Despliegue en Producción
+
+El sistema está optimizado para:
+- **Baja latencia**: < 2 segundos respuesta completa
+- **Bajo costo API**: Tokens optimizados para español
+- **Alta estabilidad**: SocketIO con reconexión automática
+- **Escalabilidad**: Arquitectura modular y extensible
+
+## 📝 Changelog v2.0
+
+### ✅ **Nuevas Características**
+- Sistema de personalidades avanzado (15 personalidades)
+- Detección automática de voz sin botones
+- Panel de administración renovado con pestañas
+- Optimizaciones específicas para español
+- Interfaz moderna con gradientes y efectos
+
+### 🔧 **Mejoras Técnicas**
+- Migración a Flask-SocketIO para estabilidad
+- Hooks React optimizados
+- VAD (Voice Activity Detection) mejorado
+- Sistema de persistencia con localStorage
+- Manejo de errores robusto
+
+### 🎯 **Optimizaciones de Rendimiento**
+- Reducción de tokens para menor costo
+- Configuración de temperatura optimizada
+- Penalties para evitar repeticiones
+- Conexiones WebSocket más estables
+- Carga lazy de componentes
+
+---
+
+**🎉 ¡Disfruta tu asistente de voz personalizado con detección automática!**
 
 ## Structure
 

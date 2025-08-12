@@ -53,13 +53,43 @@ export default function VoiceAvatar({ state = 'idle', level = 0, onTap }) {
       >
         {waves}
         <div style={{
-          position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
-          color: '#e5f1ff', fontWeight: 600
+          position: 'absolute', 
+          inset: 0, 
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center', 
+          justifyContent: 'center',
+          color: '#e5f1ff', 
+          fontWeight: 600,
+          textAlign: 'center',
+          padding: '20px',
+          fontSize: '14px',
+          lineHeight: '1.3'
         }}>
-          {state === 'listening' && 'Escuchando… (toca para enviar)'}
-          {state === 'speaking' && 'Hablando… (toca para interrumpir)'}
-          {state === 'processing' && 'Pensando…'}
-          {state === 'idle' && 'Toca para hablar'}
+          {state === 'listening' && (
+            <>
+              <div style={{ fontSize: '16px', marginBottom: '4px' }}>🎤 Escuchando...</div>
+              <div style={{ fontSize: '12px', opacity: 0.8 }}>(toca para enviar)</div>
+            </>
+          )}
+          {state === 'speaking' && (
+            <>
+              <div style={{ fontSize: '16px', marginBottom: '4px' }}>🔊 Respondiendo...</div>
+              <div style={{ fontSize: '12px', opacity: 0.8 }}>(toca para interrumpir)</div>
+            </>
+          )}
+          {state === 'processing' && (
+            <>
+              <div style={{ fontSize: '16px', marginBottom: '4px' }}>🧠 Procesando...</div>
+              <div style={{ fontSize: '12px', opacity: 0.8 }}>Un momento por favor</div>
+            </>
+          )}
+          {state === 'idle' && (
+            <>
+              <div style={{ fontSize: '16px', marginBottom: '4px' }}>💬 Toca para conversar</div>
+              <div style={{ fontSize: '12px', opacity: 0.8 }}>Asistente de voz IA</div>
+            </>
+          )}
         </div>
       </div>
     </div>

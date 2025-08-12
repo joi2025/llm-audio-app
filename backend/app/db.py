@@ -84,3 +84,16 @@ def get_settings():
   with get_conn() as c:
     cur = c.execute("SELECT key, value FROM settings")
     return { k:v for k,v in cur.fetchall() }
+
+# Compatibility wrappers for admin routes
+def get_conversations(limit=100):
+  """Return recent conversations (alias of list_messages)."""
+  return list_messages(limit)
+
+def get_logs(limit=200):
+  """Return recent logs (alias of list_logs)."""
+  return list_logs(limit)
+
+def clear_conversations():
+  """Clear conversations table (alias of clear_messages)."""
+  return clear_messages()
