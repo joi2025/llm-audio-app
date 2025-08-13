@@ -1,12 +1,13 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react'
 import useSocketIO from './hooks/useSocketIO'
 import AudioRecorder from './components/AudioRecorder'
 import AudioPlayer from './components/AudioPlayer'
 import ConversationHistory from './components/ConversationHistory'
 import LogsPanel from './components/LogsPanel'
-import AdminPanel from './components/AdminPanel'
+const AdminPanel = React.lazy(() => import('./components/AdminPanel'))
 import VoiceCircle from './pages/VoiceCircle'
 import VoiceCircleV2 from './components/VoiceCircleV2'
+import { useConversation, useConversationActions } from './contexts/ConversationContext'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001'
 
@@ -14,9 +15,10 @@ export default function App() {
   const [mode, setMode] = useState('user') // 'user' | 'admin' | 'v2' | 'v2-auto'
   const [connected, setConnected] = useState(false)
   const [logs, setLogs] = useState([])
-  const [messages, setMessages] = useState([])
   const [audioUrl, setAudioUrl] = useState(null)
   const [pendingText, setPendingText] = useState('')
+  const messages = useConversation(s => s.messages)
+  const { appendUser, appendAssistant, clear } = useConversationActions()
 
   const addLog = useCallback((entry) => {
     setLogs((l) => [...l, `[${new Date().toLocaleTimeString()}] ${entry}`])
@@ -36,9 +38,9 @@ export default function App() {
     // 1) Texto de usuario o asistente
     const transcript = payload?.transcription || payload?.transcript || payload?.text
     if (transcript && payload?.from === 'user') {
-      setMessages((m) => [...m, { role: 'user', text: transcript }])
+      appendUser(transcript)
     } else if (transcript && (payload?.from === 'assistant' || payload?.type === 'response' || payload?.type === 'result' || payload?.type === 'result_llm')) {
-      setMessages((m) => [...m, { role: 'assistant', text: transcript }])
+      appendAssistant(transcript)
     }
 
     // 2) Audio base64
@@ -60,7 +62,7 @@ export default function App() {
     } else if (typeof payload === 'string') {
       addLog(`recv text: ${payload}`)
     }
-  }, [addLog])
+  }, [addLog, appendUser, appendAssistant])
 
   const { connect, disconnect, emit, isConnected } = useSocketIO(BACKEND_URL, {
     autoConnect: true,
@@ -97,13 +99,13 @@ export default function App() {
   const handleSendText = () => {
     const text = pendingText.trim()
     if (!text) return
-    setMessages((m) => [...m, { role: 'user', text }])
+    appendUser(text)
     emit('user_text', { text })
     setPendingText('')
   }
 
   const clearAll = () => {
-    setMessages([])
+    clear()
     setLogs([])
     setAudioUrl((old) => { if (old) URL.revokeObjectURL(old); return null })
   }
@@ -174,7 +176,9 @@ export default function App() {
           </section>
         </>
       ) : mode === 'admin' ? (
-        <AdminPanel />
+        <Suspense fallback={<div style={{ padding: 20, color: '#94a3b8' }}>Cargando Admin...</div>}>
+          <AdminPanel />
+        </Suspense>
       ) : mode === 'v2-auto' ? (
         <VoiceCircleV2 wsUrl={BACKEND_URL} autoMode={true} />
       ) : mode === 'v2' ? (

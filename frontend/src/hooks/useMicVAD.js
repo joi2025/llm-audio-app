@@ -8,7 +8,7 @@ export default function useMicVAD({
   onFinal, 
   onSilenceEnd, 
   onLevel, 
-  rmsThreshold = 0.015,    // More sensitive for better detection
+  rmsThreshold = 0.015,    // Base threshold; will be adjusted adaptively
   minVoiceMs = 200,        // Faster voice detection
   maxSilenceMs = 600,      // Quicker silence cutoff
   chunkMs = 250,           // Smaller chunks for responsiveness
@@ -24,6 +24,11 @@ export default function useMicVAD({
   const silenceTimerRef = useRef(null)
   const speakingAccumRef = useRef(0)
   const rafRef = useRef(null)
+  const isSpeakingRef = useRef(false)
+  const ambientLevelRef = useRef(0)
+  const dynamicThresholdRef = useRef(rmsThreshold)
+  const prerollRef = useRef([]) // store last ~5 chunks base64 during non-speaking
+  const prerollMax = 5
 
   const cleanupAudio = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current)
@@ -38,6 +43,8 @@ export default function useMicVAD({
     try { audioCtxRef.current?.close() } catch {}
     audioCtxRef.current = null
     analyserRef.current = null
+    isSpeakingRef.current = false
+    prerollRef.current = []
   }, [])
 
   const blobToBase64 = (blob) => new Promise((resolve, reject) => {
@@ -74,12 +81,14 @@ export default function useMicVAD({
     const enhancedRms = (rms * 0.3) + (voiceRms * 0.7)  // Combine for better detection
     
     onLevel && onLevel(Math.min(1, enhancedRms * 3))
-
-    const isVoice = enhancedRms > rmsThreshold
+    // Adaptive threshold around ambient
+    const dyn = dynamicThresholdRef.current
+    const isVoice = enhancedRms > dyn
     const now = performance.now()
     
     if (isVoice) {
       speakingAccumRef.current = speakingAccumRef.current || now
+      isSpeakingRef.current = true
       if (silenceTimerRef.current) { 
         clearTimeout(silenceTimerRef.current)
         silenceTimerRef.current = null 
@@ -96,10 +105,14 @@ export default function useMicVAD({
           }, maxSilenceMs)
         }
       }
+      // drop speaking flag once below threshold for a bit
+      if (!silenceTimerRef.current) {
+        isSpeakingRef.current = false
+      }
     }
 
     rafRef.current = requestAnimationFrame(tick)
-  }, [maxSilenceMs, minVoiceMs, onLevel, onSilenceEnd, rmsThreshold])
+  }, [maxSilenceMs, minVoiceMs, onLevel, onSilenceEnd])
 
   const startListening = useCallback(async () => {
     if (listening) return
@@ -115,6 +128,34 @@ export default function useMicVAD({
       analyser.fftSize = 1024
       source.connect(analyser)
       analyserRef.current = analyser
+
+      // Ambient calibration for 400ms to derive dynamic threshold
+      dynamicThresholdRef.current = rmsThreshold
+      ambientLevelRef.current = 0
+      const calibBuf = new Uint8Array(analyser.frequencyBinCount)
+      const t0 = performance.now()
+      let samples = 0
+      while (performance.now() - t0 < 400) {
+        analyser.getByteFrequencyData(calibBuf)
+        let s = 0, vs = 0
+        const vsStart = Math.floor(calibBuf.length * 0.1)
+        const vsEnd = Math.floor(calibBuf.length * 0.6)
+        for (let i = 0; i < calibBuf.length; i++) {
+          const v = calibBuf[i] / 255
+          s += v * v
+          if (i >= vsStart && i <= vsEnd) vs += v * v
+        }
+        const rms = Math.sqrt(s / calibBuf.length)
+        const vrms = Math.sqrt(vs / (vsEnd - vsStart))
+        const enh = (rms * 0.3) + (vrms * 0.7)
+        ambientLevelRef.current += enh
+        samples++
+        await new Promise(r => setTimeout(r, 20))
+      }
+      ambientLevelRef.current = ambientLevelRef.current / Math.max(1, samples)
+      // Set dynamic threshold a bit above ambient (e.g., +50%)
+      dynamicThresholdRef.current = Math.max(ambientLevelRef.current * 1.5, rmsThreshold)
+      console.debug('[useMicVAD] 🎛️ Calibrated ambient=', ambientLevelRef.current.toFixed(4), 'dynThr=', dynamicThresholdRef.current.toFixed(4))
 
       // MediaRecorder for chunks
       // 🎙️ OPTIMIZED MediaRecorder - Ultra-low latency
@@ -138,7 +179,18 @@ export default function useMicVAD({
           // Avoid verbose logging each 250ms; keep UI smooth
           if (streaming) {
             const b64 = await blobToBase64(ev.data)
-            onChunk && onChunk(b64)
+            // Ring buffer: keep last 5 chunks when NOT speaking
+            if (!isSpeakingRef.current) {
+              prerollRef.current.push(b64)
+              if (prerollRef.current.length > prerollMax) prerollRef.current.shift()
+            } else {
+              // On first speaking, flush preroll first
+              if (prerollRef.current.length) {
+                for (const pre of prerollRef.current) onChunk && onChunk(pre)
+                prerollRef.current = []
+              }
+              onChunk && onChunk(b64)
+            }
           } else {
             bufferedBlobsRef.current.push(ev.data)
           }

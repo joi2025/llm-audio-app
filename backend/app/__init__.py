@@ -1,8 +1,15 @@
 import os
+try:
+    from gevent import monkey  # type: ignore
+    monkey.patch_all()
+except Exception:
+    # If gevent is not present in some environments, continue gracefully
+    pass
 from flask import Flask
 from flask_cors import CORS
-from flask_sock import Sock
+from flask_socketio import SocketIO
 from .config import Config
+from .api import register_api
 
 
 def create_app():
@@ -23,13 +30,21 @@ def create_app():
     app.register_blueprint(tts_bp, url_prefix="/api")
     app.register_blueprint(admin_bp, url_prefix="/api")
 
-    # WebSocket
-    sock = Sock(app)
-    from .api.websocket import init_ws
-    init_ws(sock)
+    # Register new modular API (v2) under /api/v2
+    register_api(app)
+
+    # WebSocket (Flask-SocketIO)
+    socketio = SocketIO(app, cors_allowed_origins=app.config.get("CORS_ORIGINS", "*"))
+    from .api.websocket_socketio import init_socketio
+    init_socketio(socketio)
 
     @app.get("/health")
     def health():
+        return {"status": "ok", "ws": "/ws/assistant"}
+
+    # Alias para health bajo /api para compatibilidad con proxy/scripts
+    @app.get("/api/health")
+    def health_api():
         return {"status": "ok", "ws": "/ws/assistant"}
 
     return app

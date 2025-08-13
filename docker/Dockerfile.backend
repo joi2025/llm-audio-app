@@ -1,0 +1,56 @@
+# syntax=docker/dockerfile:1.6
+
+# ---- Base builder ----
+FROM python:3.11-slim AS base
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential curl ca-certificates git && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# ---- Builder for deps ----
+FROM base AS builder
+COPY backend/requirements.txt ./requirements.txt
+RUN pip install --upgrade pip && pip wheel --no-cache-dir --no-deps -r requirements.txt -w /wheels
+
+# ---- Runtime ----
+FROM python:3.11-slim AS runtime
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy wheels and install
+COPY --from=builder /wheels /wheels
+COPY backend/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir /wheels/*
+
+# Copy backend app code
+COPY backend ./backend
+
+# Runtime environment
+ENV FLASK_ENV=production \
+    PYTHONPATH=/app/backend \
+    PORT=8000
+
+# Healthcheck endpoint
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD curl -f http://localhost:8000/health || exit 1
+
+# Expose port
+EXPOSE 8000
+
+# Start via gunicorn + gevent-websocket for Socket.IO
+# Note: app factory is backend/app/__init__.py:create_app
+RUN pip install gunicorn gevent gevent-websocket
+
+# Entrypoint loads secrets if provided by Docker secrets
+COPY docker/entrypoint-backend.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+
+CMD ["gunicorn", "backend.app:create_app()", "-k", "geventwebsocket.gunicorn.workers.GeventWebSocketWorker", "-w", "1", "-b", "0.0.0.0:8000", "--timeout", "120"]

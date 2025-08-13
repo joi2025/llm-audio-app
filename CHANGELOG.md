@@ -13,6 +13,22 @@
   - Refresco duro del navegador tras el cambio (evitar HMR con closures obsoletos).
   - Probar flujos v2 y v2-auto con STT → LLM → TTS, y rearmado automático.
 
+## 2025-08-13 - Refactor: limpieza quirúrgica de duplicados y backups (correciones-gpt51.0)
+
+- Creación de carpetas `archive/` para preservar artefactos sin romper historial ni imports activos.
+- Movimientos realizados con `git mv` (sólo si existían):
+  - Frontend/components → archive/
+    - `VoiceCircleV2Auto.jsx`
+  - Frontend/pages → archive/
+    - `VoiceCircleV2.jsx`
+  - Frontend/hooks → archive/
+    - `useAgentVoice.js`
+    - `useWebSocket.js`
+- Notas:
+  - Se mantiene como fuente única `components/AdminPanel.jsx` y `components/VoiceCircleV2.jsx` (v2 y v2-auto via `autoMode`).
+  - Backend mantiene `websocket_socketio.py` como implementación activa; `websocket.py` legacy no estaba presente en esta copia.
+  - No se alteran puntos de entrada ni rutas. Cambios mínimos para claridad del repositorio.
+
 ## 2025-08-13 - Backend: WebSocket unificado (Socket.IO)
 
 - Añadido `backend/app/api/websocket_unified.py` con:

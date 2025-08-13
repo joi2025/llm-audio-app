@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { AdminAPI } from '../services/api'
 import { PERSONALITIES, VOICE_CATEGORIES, OPENAI_VOICES } from '../data/personalities'
 import usePersonality from '../hooks/usePersonality'
@@ -18,7 +18,7 @@ export default function AdminPanel() {
   
   const { personalityData, applyPersonality } = usePersonality()
 
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     setLoading(true)
     try {
       const [st, s, c, l] = await Promise.all([
@@ -46,13 +46,13 @@ export default function AdminPanel() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => { loadAll() }, [])
 
-  const onChange = (k, v) => setSettings((p) => ({ ...p, [k]: v }))
+  const onChange = useCallback((k, v) => setSettings((p) => ({ ...p, [k]: v })), [])
 
-  const save = async () => {
+  const save = useCallback(async () => {
     setSaving(true)
     try { 
       await AdminAPI.setSettings(settings)
@@ -63,9 +63,9 @@ export default function AdminPanel() {
     } finally { 
       setSaving(false) 
     }
-  }
+  }, [settings, loadAll])
 
-  const clearConvos = async () => {
+  const clearConvos = useCallback(async () => {
     if (confirm('¿Estás seguro de eliminar todas las conversaciones?')) {
       try {
         await AdminAPI.clearConversations()
@@ -75,9 +75,9 @@ export default function AdminPanel() {
         alert('❌ Error al eliminar conversaciones')
       }
     }
-  }
+  }, [])
 
-  const testApiKey = async (keyToTest = null) => {
+  const testApiKey = useCallback(async (keyToTest = null) => {
     setApiKeyStatus('testing')
     try {
       const result = await AdminAPI.testApiKey(keyToTest)
@@ -89,9 +89,9 @@ export default function AdminPanel() {
       alert('❌ Error al probar API Key: ' + error.message)
       return false
     }
-  }
+  }, [])
 
-  const saveApiKey = async () => {
+  const saveApiKey = useCallback(async () => {
     if (!apiKeyInput.trim()) {
       alert('❌ Por favor ingresa una API Key')
       return
@@ -121,7 +121,99 @@ export default function AdminPanel() {
     } finally {
       setSaving(false)
     }
-  }
+  }, [apiKeyInput, settings, testApiKey, loadAll])
+
+  // Window the heavy lists to avoid huge DOM and expensive re-render
+  const windowedConvos = useMemo(() => {
+    if (!convos) return []
+    const N = 200
+    return convos.length > N ? convos.slice(convos.length - N) : convos
+  }, [convos])
+  const windowedLogs = useMemo(() => {
+    if (!logs) return []
+    const N = 300
+    return logs.length > N ? logs.slice(logs.length - N) : logs
+  }, [logs])
+
+  const TabButton = React.memo(function TabButton({ id, label, active, onClick }) {
+    return (
+      <button
+        onClick={onClick}
+        style={{
+          background: active ? 'rgba(59, 130, 246, 0.3)' : 'rgba(30, 41, 59, 0.5)',
+          border: active ? '1px solid rgba(59, 130, 246, 0.5)' : '1px solid rgba(75, 85, 99, 0.3)',
+          color: active ? '#60a5fa' : '#94a3b8',
+          padding: '10px 16px',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          fontWeight: active ? 600 : 400,
+          transition: 'all 0.2s'
+        }}
+      >
+        {label}
+      </button>
+    )
+  })
+
+  const ConvoRow = React.memo(function ConvoRow({ c }) {
+    return (
+      <div style={{ 
+        background: 'rgba(0,0,0,0.2)', 
+        borderRadius: '8px', 
+        padding: '12px', 
+        marginBottom: '10px' 
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
+          <span style={{ 
+            background: c.role === 'user' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(59, 130, 246, 0.3)',
+            color: c.role === 'user' ? '#4ade80' : '#60a5fa',
+            padding: '2px 8px',
+            borderRadius: '4px',
+            fontSize: '0.8em',
+            fontWeight: 600
+          }}>
+            {c.role === 'user' ? '👤 Usuario' : '🤖 Asistente'}
+          </span>
+          <span style={{ color: '#94a3b8', fontSize: '0.8em' }}>
+            {new Date(c.created_at).toLocaleString()}
+          </span>
+        </div>
+        <div style={{ color: '#e2e8f0', lineHeight: '1.4' }}>
+          {c.text}
+        </div>
+        {c.tokens_in && (
+          <div style={{ color: '#6b7280', fontSize: '0.8em', marginTop: '5px' }}>
+            Tokens: {c.tokens_in} entrada, {c.tokens_out} salida
+          </div>
+        )}
+      </div>
+    )
+  })
+
+  const LogRow = React.memo(function LogRow({ l }) {
+    return (
+      <div style={{ 
+        marginBottom: '8px',
+        paddingBottom: '8px',
+        borderBottom: '1px solid rgba(75, 85, 99, 0.2)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ 
+            color: l.level === 'ERROR' ? '#f87171' : l.level === 'WARNING' ? '#fbbf24' : '#4ade80',
+            fontWeight: 600
+          }}>
+            [{l.level}]
+          </span>
+          <span style={{ color: '#94a3b8', fontSize: '0.8em' }}>
+            {new Date(l.created_at).toLocaleString()}
+          </span>
+        </div>
+        <div style={{ color: '#e2e8f0', marginTop: '4px' }}>
+          {l.message}
+        </div>
+      </div>
+    )
+  })
 
   if (loading) {
     return (

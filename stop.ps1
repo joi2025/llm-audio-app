@@ -17,7 +17,7 @@ $ProgressPreference = "SilentlyContinue"
 function Write-ColorOutput($Message, $Color = "White") {
     if (-not $Silent) {
         Write-Host $Message -ForegroundColor $Color
-    }
+    }}
 }
 
 function Write-Success($Message) { Write-ColorOutput "[OK] $Message" "Green" }
@@ -38,13 +38,31 @@ if (-not $Silent) {
 
 Write-Info "Iniciando detencion segura del sistema..."
 
+# Si los PIDs indican 'compose', detener stack dockerizado primero
+$composeStopped = $false
+if (Test-Path ".pids/backend.pid") {
+    $pidContent = Get-Content ".pids/backend.pid" -Raw
+    if ($pidContent -eq "compose") {
+        try {
+            Write-Info "Deteniendo servicios Docker Compose..."
+            Push-Location (Join-Path $PWD 'docker')
+            docker compose down | Out-Null
+            Pop-Location
+            Write-Success "Servicios Docker Compose detenidos"
+            $composeStopped = $true
+        } catch {
+            Write-Warning "No se pudo detener Docker Compose: $($_.Exception.Message)"
+        }
+    }
+}
+
 # ========================================
-# 1. DETENER PROCESOS POR PID
+# 1. DETENER PROCESOS POR PID (sólo si no es compose)
 # ========================================
 
 $stoppedProcesses = 0
 
-if (Test-Path ".pids") {
+if (Test-Path ".pids" -and -not $composeStopped) {
     Write-Info "Deteniendo procesos registrados..."
     
     # Leer información del sistema
@@ -114,14 +132,15 @@ if (Test-Path ".pids") {
 }
 
 # ========================================
-# 2. DETENER PROCESOS POR PUERTO
+# 2. DETENER PROCESOS POR PUERTO (sólo si no es compose)
 # ========================================
 
-Write-Info "Verificando y limpiando puertos..."
+if (-not $composeStopped) { Write-Info "Verificando y limpiando puertos..." }
 
 $ports = @(8001, 3001)
 $portProcesses = 0
 
+if (-not $composeStopped) {
 foreach ($port in $ports) {
     try {
         $connections = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue
@@ -153,14 +172,15 @@ foreach ($port in $ports) {
 }
 
 # ========================================
-# 3. DETENER PROCESOS RELACIONADOS
+# 3. DETENER PROCESOS RELACIONADOS (sólo si no es compose)
 # ========================================
 
-Write-Info "Limpiando procesos relacionados..."
+if (-not $composeStopped) { Write-Info "Limpiando procesos relacionados..." }
 
 $relatedProcesses = @("node", "python", "flask", "vite")
 $relatedStopped = 0
 
+if (-not $composeStopped) {
 foreach ($processName in $relatedProcesses) {
     try {
         $processes = Get-Process -Name $processName -ErrorAction SilentlyContinue

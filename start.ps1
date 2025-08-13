@@ -21,10 +21,45 @@ function Write-ColorOutput($Message, $Color = "White") {
     }
 }
 
+# Helpers de logging (deben definirse antes de su uso)
 function Write-Success($Message) { Write-ColorOutput "[OK] $Message" "Green" }
 function Write-Info($Message) { Write-ColorOutput "[INFO] $Message" "Cyan" }
 function Write-Warning($Message) { Write-ColorOutput "[WARN] $Message" "Yellow" }
 function Write-Error($Message) { Write-ColorOutput "[ERROR] $Message" "Red" }
+
+# Verificar que Docker esté en modo Linux containers (no Windows containers) usando formato estable
+function Get-DockerOSType {
+    try {
+        $out = docker info --format '{{.OSType}}' 2>$null
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($out)) { return $null }
+        return $out.Trim()
+    } catch { return $null }
+}
+
+# Esperar a que el daemon de Docker esté listo (hasta 45s)
+function Wait-DockerDaemon {
+    param([int]$TimeoutSec = 45)
+    $elapsed = 0
+    while ($elapsed -lt $TimeoutSec) {
+        $osType = Get-DockerOSType
+        if ($osType) { return $osType }
+        Start-Sleep -Seconds 3
+        $elapsed += 3
+    }
+    return $null
+}
+
+$osType = Wait-DockerDaemon -TimeoutSec 45
+if (-not $osType) {
+    Write-Error "Docker daemon no responde. Abre Docker Desktop y espera a que inicialice el motor Linux (WSL2)."
+    Write-Host "Pista: si ves el error de pipe 'dockerDesktopLinuxEngine', cambia a 'Switch to Linux containers'." -ForegroundColor Yellow
+    exit 1
+}
+if ($osType -ne 'linux') {
+    Write-Error "Docker Desktop no está en modo Linux containers (detectado: '$osType'). Usa 'Switch to Linux containers' y vuelve a ejecutar."
+    exit 1
+}
+Write-Success "Docker en modo Linux containers"
 
 # Header
 if (-not $Silent) {
@@ -45,29 +80,16 @@ Write-Info "Iniciando sistema autonomo..."
 
 Write-Info "Verificando dependencias del sistema..."
 
-# Verificar Node.js
+# Verificar Docker
 try {
-    $nodeVersion = node --version 2>$null
+    $dockerVersion = docker --version 2>$null
     if ($LASTEXITCODE -eq 0) {
-        Write-Success "Node.js detectado: $nodeVersion"
+        Write-Success "Docker detectado: $dockerVersion"
     } else {
-        throw "Node.js no encontrado"
+        throw "Docker no encontrado"
     }
 } catch {
-    Write-Error "Node.js no está instalado. Descárgalo de: https://nodejs.org"
-    exit 1
-}
-
-# Verificar Python
-try {
-    $pythonVersion = python --version 2>$null
-    if ($LASTEXITCODE -eq 0) {
-        Write-Success "Python detectado: $pythonVersion"
-    } else {
-        throw "Python no encontrado"
-    }
-} catch {
-    Write-Error "Python no está instalado. Descárgalo de: https://python.org"
+    Write-Error "Docker Desktop no está instalado o no está en ejecución. Descárgalo de: https://www.docker.com/"
     exit 1
 }
 
@@ -77,105 +99,23 @@ try {
 
 Write-Info "Configurando entorno automáticamente..."
 
-# Crear .env si no existe
-if (-not (Test-Path ".env")) {
-    Write-Warning "Archivo .env no encontrado. Creando configuración automática..."
-    
-    $envContent = @"
-# ========================================
-# LLM Audio App - Configuración Automática
-# ========================================
-
-# OpenAI Configuration (REQUERIDO)
-OPENAI_API_KEY=sk-your-api-key-here
-OPENAI_BASE_URL=https://api.openai.com/v1
-
-# Server Configuration
-BACKEND_PORT=8001
-FRONTEND_PORT=3001
-
-# Optimizaciones para Español
-DEFAULT_VOICE=nova
-DEFAULT_MODEL=gpt-4o-mini
-DEFAULT_LANGUAGE=es
-DEFAULT_TEMPERATURE=0.6
-DEFAULT_MAX_TOKENS=120
-
-# Sistema de Personalidades
-PERSONALITIES_ENABLED=true
-AUTO_VOICE_ENABLED=true
-
-# Modo de Desarrollo/Producción
-NODE_ENV=development
-FLASK_ENV=development
-"@
-    
-    $envContent | Out-File -FilePath ".env" -Encoding UTF8
-    Write-Success "Archivo .env creado con configuracion por defecto"
-    Write-Warning "IMPORTANTE: Configura tu OPENAI_API_KEY en el archivo .env"
-    
-    if (-not $Silent) {
-        $response = Read-Host "¿Quieres abrir el archivo .env para configurar la API key? (y/N)"
-        if ($response -eq "y" -or $response -eq "Y") {
-            notepad .env
-            Read-Host "Presiona Enter cuando hayas configurado la API key..."
-        }
-    }
+# Preparar secretos de Docker (dev)
+$secretsDir = Join-Path "docker" "secrets"
+New-Item -ItemType Directory -Path $secretsDir -Force | Out-Null
+if (-not (Test-Path (Join-Path $secretsDir "openai_api_key"))) {
+    Write-Warning "docker/secrets/openai_api_key no existe. Creando placeholder..."
+    "sk-your-api-key-here" | Out-File -FilePath (Join-Path $secretsDir "openai_api_key") -Encoding ASCII -NoNewline
 }
-
-# Verificar API Key
-$envContent = Get-Content ".env" -Raw
-if ($envContent -match "OPENAI_API_KEY=sk-your-api-key-here" -or $envContent -match "OPENAI_API_KEY=$" -or $envContent -notmatch "OPENAI_API_KEY=sk-") {
-    Write-Warning "API Key de OpenAI no configurada correctamente"
-    if (-not $Silent) {
-        Write-Host "El sistema funcionará en modo demo limitado" -ForegroundColor Yellow
-    }
+if (-not (Test-Path (Join-Path $secretsDir "flask_secret_key"))) {
+    Write-Warning "docker/secrets/flask_secret_key no existe. Creando clave aleatoria..."
+    -join ((33..126) | Get-Random -Count 48 | ForEach-Object {[char]$_}) | Out-File -FilePath (Join-Path $secretsDir "flask_secret_key") -Encoding ASCII -NoNewline
 }
 
 # ========================================
 # 3. INSTALACIÓN AUTOMÁTICA DE DEPENDENCIAS
 # ========================================
 
-Write-Info "Instalando dependencias automaticamente..."
-
-# Backend - Crear venv si no existe
-if (-not (Test-Path "backend/venv")) {
-    Write-Info "Creando entorno virtual de Python..."
-    Set-Location backend
-    python -m venv venv
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Error creando entorno virtual"
-        exit 1
-    }
-    Set-Location ..
-    Write-Success "Entorno virtual creado"
-}
-
-# Backend - Instalar dependencias
-Write-Info "Instalando dependencias del backend..."
-Set-Location backend
-& "venv/Scripts/Activate.ps1"
-pip install -r requirements.txt --quiet --disable-pip-version-check
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Error instalando dependencias del backend"
-    exit 1
-}
-deactivate
-Set-Location ..
-Write-Success "Dependencias del backend instaladas"
-
-# Frontend - Instalar dependencias
-if (-not (Test-Path "frontend/node_modules")) {
-    Write-Info "Instalando dependencias del frontend..."
-    Set-Location frontend
-    npm install --silent
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Error instalando dependencias del frontend"
-        exit 1
-    }
-    Set-Location ..
-    Write-Success "Dependencias del frontend instaladas"
-}
+Write-Info "Entorno dockerizado: se omite instalación local de dependencias"
 
 # ========================================
 # 4. LIMPIEZA DE PROCESOS ANTERIORES
@@ -183,19 +123,7 @@ if (-not (Test-Path "frontend/node_modules")) {
 
 Write-Info "Limpiando procesos anteriores..."
 
-# Matar procesos en puertos específicos
-$ports = @(8001, 3001)
-foreach ($port in $ports) {
-    $processes = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess
-    foreach ($processId in $processes) {
-        try {
-            Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
-            Write-Success "Proceso en puerto $port terminado"
-        } catch {
-            # Ignorar errores
-        }
-    }
-}
+# No matamos procesos locales; Compose aisla puertos (proxy usa 8080)
 
 # Limpiar archivos PID anteriores
 if (Test-Path ".pids") {
@@ -207,89 +135,40 @@ New-Item -ItemType Directory -Path ".pids" -Force | Out-Null
 # 5. INICIO DE SERVICIOS
 # ========================================
 
-Write-Info "Iniciando servicios del sistema..."
-
-# Backend
-Write-Info "Iniciando backend con Flask-SocketIO..."
-$backendProcess = Start-Process powershell -ArgumentList @(
-    "-NoExit",
-    "-WindowStyle", "Minimized",
-    "-Command", 
-    "cd '$PWD/backend'; venv/Scripts/Activate.ps1; python run.py"
-) -PassThru
-
-if ($backendProcess) {
-    $backendProcess.Id | Out-File -FilePath ".pids/backend.pid" -Encoding UTF8
-    Write-Success "Backend iniciado (PID: $($backendProcess.Id))"
-} else {
-    Write-Error "Error iniciando backend"
+Write-Info "Iniciando servicios con Docker Compose (dev)..."
+$composeDir = Join-Path $PWD 'docker'
+Push-Location $composeDir
+# Build explícito para minimizar fallos en 'up'
+docker compose build
+if ($LASTEXITCODE -ne 0) {
+    Pop-Location
+    Write-Error "Fallo al construir imágenes con Docker Compose"
     exit 1
 }
 
-# Esperar a que el backend esté listo (robusto)
-Write-Info "Esperando a que el backend este listo..."
-$maxAttempts = 45
-$attempt = 0
-$ready = $false
-do {
-    Start-Sleep -Seconds 1
-    $attempt++
-    # 1) Comprobar puerto TCP
-    $tcp = Test-NetConnection -ComputerName 'localhost' -Port 8001 -WarningAction SilentlyContinue -InformationLevel Quiet
-    if ($tcp) {
-        # 2) Intentar ping al endpoint de estado (no bloqueante)
-        try {
-            $resp = Invoke-WebRequest -Uri "http://localhost:8001/api/admin/status" -TimeoutSec 2 -ErrorAction SilentlyContinue
-            # Considerar cualquier 2xx/3xx como listo
-            if ($resp -and $resp.StatusCode -ge 200 -and $resp.StatusCode -lt 400) {
-                $ready = $true
-                break
-            } else {
-                # Puerto abierto ya es suficiente para continuar
-                $ready = $true
-                break
-            }
-        } catch {
-            # Puerto abierto ya es suficiente para continuar
-            $ready = $true
-            break
-        }
-    }
-} while (-not $ready -and $attempt -lt $maxAttempts)
-
-if (-not $ready) {
-    Write-Warning "Backend tarde en responder, continuando de todas formas (puede estar listo)."
-} else {
-    Write-Success "Backend listo (puerto abierto y endpoint verificado)."
-}
-
-# Frontend
-Write-Info "Iniciando frontend con React + Vite..."
-$frontendProcess = Start-Process powershell -ArgumentList @(
-    "-NoExit",
-    "-WindowStyle", "Minimized", 
-    "-Command",
-    "cd '$PWD/frontend'; npm run dev"
-) -PassThru
-
-if ($frontendProcess) {
-    $frontendProcess.Id | Out-File -FilePath ".pids/frontend.pid" -Encoding UTF8
-    Write-Success "Frontend iniciado (PID: $($frontendProcess.Id))"
-} else {
-    Write-Error "Error iniciando frontend"
+docker compose up -d --remove-orphans | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Pop-Location
+    Write-Error "Error iniciando servicios con Docker Compose"
     exit 1
 }
+Pop-Location
+
+# Guardar estado simple
+"compose" | Out-File -FilePath ".pids/backend.pid" -Encoding UTF8
+"compose" | Out-File -FilePath ".pids/frontend.pid" -Encoding UTF8
+Write-Success "Servicios dockerizados iniciados"
 
 # Esperar a que el frontend esté listo
-Write-Info "Esperando a que el frontend este listo..."
-$maxAttempts = 60
+Write-Info "Esperando a que el proxy (frontend) este listo en :8080..."
+$maxAttempts = 90
 $attempt = 0
 do {
     Start-Sleep -Seconds 1
     $attempt++
     try {
-        $response = Invoke-WebRequest -Uri "http://localhost:3001" -TimeoutSec 2 -ErrorAction SilentlyContinue
-        if ($response.StatusCode -eq 200) {
+        $response = Invoke-WebRequest -Uri "http://localhost:8080/api/health" -TimeoutSec 2 -ErrorAction SilentlyContinue
+        if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) {
             break
         }
     } catch {
@@ -301,7 +180,11 @@ if ($attempt -ge $maxAttempts) {
     Write-Warning "Frontend tardó más de lo esperado, pero puede estar funcionando"
 }
 
-Write-Success "Frontend listo"
+if ($attempt -lt $maxAttempts) {
+    Write-Success "Proxy y backend listos"
+} else {
+    Write-Warning "Proxy tardó más de lo esperado, intenta abrir igualmente"
+}
 
 # ========================================
 # 6. VERIFICACIÓN FINAL Y APERTURA
@@ -315,13 +198,11 @@ if (-not $Silent) {
 ========================================
    SISTEMA LISTO - URLS DISPONIBLES
 ========================================
-Aplicacion Principal: http://localhost:3001
-Panel de Admin:      http://localhost:3001 (boton Admin)
-v2 Auto-Deteccion:   http://localhost:3001 (boton v2 Auto)
-Backend API:         http://localhost:8001
+Aplicacion Principal: http://localhost:8080
+Backend API Health:  http://localhost:8080/api/health
+Socket.IO:           http://localhost:8080/socket.io/
 
-RECOMENDADO: Usa el boton "v2 Auto" para 
-   deteccion automatica de voz sin botones!
+RECOMENDADO: Usa el modo v2 Auto en el frontend
 ========================================
 "@ -ForegroundColor Green
 }
@@ -330,7 +211,7 @@ RECOMENDADO: Usa el boton "v2 Auto" para
 if (-not $NoOpen) {
     Start-Sleep -Seconds 2
     try {
-        Start-Process "http://localhost:3001"
+        Start-Process "http://localhost:8080"
         Write-Success "Navegador abierto automaticamente"
     } catch {
         Write-Warning "No se pudo abrir el navegador automáticamente"
@@ -342,8 +223,8 @@ $systemInfo = @{
     StartTime = Get-Date
     BackendPID = $backendProcess.Id
     FrontendPID = $frontendProcess.Id
-    BackendURL = "http://localhost:8001"
-    FrontendURL = "http://localhost:3001"
+    BackendURL = "http://localhost:8080/api"
+    FrontendURL = "http://localhost:8080"
     Version = "2.0"
     Features = @("Personalidades", "Auto-Deteccion", "AdminPanel", "Espanol-Optimizado")
 } | ConvertTo-Json

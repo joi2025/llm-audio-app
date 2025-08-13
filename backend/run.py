@@ -3,7 +3,7 @@ import sys
 from flask import Flask
 from flask_socketio import SocketIO
 from flask_cors import CORS
-from app.api.websocket_socketio import init_socketio
+from app.api.websocket_unified import init_unified
 from app.api.admin_routes import admin_bp
 
 def create_app():
@@ -29,7 +29,7 @@ if __name__ == '__main__':
     socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
     
     # Initialize WebSocket handlers
-    init_socketio(socketio)
+    init_unified(socketio)
     
     port = int(os.getenv('PORT', 8001))
     
