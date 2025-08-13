@@ -36,6 +36,8 @@ export default function useAutoVoice({
   const speechDetectedRef = useRef(false)
   const lastActivityRef = useRef(Date.now())
   const processingTimerRef = useRef(null)
+  const cooldownUntilRef = useRef(0)
+  const hadSpeechThisTurnRef = useRef(false)
   
   // Configuración optimizada para español y eficiencia
   const vadConfig = {
@@ -61,6 +63,7 @@ export default function useAutoVoice({
   } = useMicVAD({
     onChunk: useCallback((b64) => {
       // Stream partial audio to backend for ultra-low latency
+      hadSpeechThisTurnRef.current = true
       onAudioChunk?.(b64)
     }, [onAudioChunk]),
     onFinal: useCallback((audioB64) => {
@@ -83,6 +86,10 @@ export default function useAutoVoice({
       if (speechDetectedRef.current) {
         console.log('🤫 [AutoVoice] Silencio detectado, enviando audio...')
         onSilenceDetected?.()
+        // Pequeño cooldown para evitar bucles start/stop rápidos por ruido
+        cooldownUntilRef.current = Date.now() + 700
+        // Marcar fin de turno
+        speechDetectedRef.current = false
       }
     }, [onSilenceDetected]),
 
@@ -105,9 +112,12 @@ export default function useAutoVoice({
     const detectSpeechStart = () => {
       // Solo iniciar si no estamos ya grabando y el asistente no está hablando
       if (!listening && !isAssistantSpeaking && !isProcessing) {
+        // Evitar reinicio inmediato tras silencio
+        if (Date.now() < cooldownUntilRef.current) return
         if (audioLevel > vadConfig.speechThreshold) {
           console.log('🎤 [AutoVoice] Habla detectada automáticamente, iniciando grabación...')
           speechDetectedRef.current = true
+          hadSpeechThisTurnRef.current = false
           setIsListening(true)
           startListening()
           onSpeechStart?.()
@@ -226,6 +236,7 @@ export default function useAutoVoice({
     
     // Métricas para optimización
     lastActivity: lastActivityRef.current,
-    speechDetected: speechDetectedRef.current
+    speechDetected: speechDetectedRef.current,
+    hadSpeechThisTurn: hadSpeechThisTurnRef.current
   }
 }

@@ -18,6 +18,7 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
   
   const mediaRecorderRef = useRef(null)
   const audioChunksRef = useRef([])
+  const audioChunkCountRef = useRef(0)
   const streamRef = useRef(null)
   const isSpeakingRef = useRef(false)
   const ttsAudioRef = useRef(null)
@@ -218,6 +219,13 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
       setIsListening(false)
       setIsProcessing(true)
       if (!isConnected) return
+      // Emit only if hubo voz real en este turno para evitar STT vacío
+      const hadSpeech = !!autoVoiceRef.current?.hadSpeechThisTurn
+      if (!hadSpeech) {
+        console.warn('[VoiceCircleV2] Skip audio_end (no speech this turn)')
+        setIsProcessing(false)
+        return
+      }
       if (!autoEndSentRef.current) {
         setTimeout(() => {
           emitRef.current && emitRef.current('audio_end', {
@@ -355,6 +363,7 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
       setError('')
       
       audioChunksRef.current = []
+      audioChunkCountRef.current = 0
       
       mediaRecorderRef.current = new MediaRecorder(streamRef.current, {
         mimeType: 'audio/webm;codecs=opus',
@@ -363,6 +372,7 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
 
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0) {
+          audioChunkCountRef.current += 1
           audioChunksRef.current.push(event.data)
           // Stream chunk immediately to backend to reduce latency
           try {
@@ -379,6 +389,12 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
       }
 
       mediaRecorderRef.current.onstop = async () => {
+        // Evitar STT vacío si no hubo chunks
+        if (audioChunkCountRef.current === 0) {
+          console.warn('[VoiceCircleV2] Skip audio_end (0 chunks)')
+          setIsProcessing(false)
+          return
+        }
         // Give a moment for last chunk to flush over polling
         setTimeout(() => {
           emit('audio_end', {

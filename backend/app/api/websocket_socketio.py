@@ -12,11 +12,23 @@ def init_socketio(socketio):
     def handle_connect():
         session_id = f"ws_{int(time.time() * 1000)}"
         print(f"🔗 New voice session: {session_id}")
+        # Reset any previously retained chunks for a clean session
+        try:
+            if hasattr(init_socketio, 'handle_audio_chunk') and hasattr(init_socketio.handle_audio_chunk, 'chunks'):
+                init_socketio.handle_audio_chunk.chunks = []
+        except Exception:
+            pass
         emit('hello', {'message': 'ws connected', 'ts': int(time.time())})
     
     @socketio.on('disconnect')
     def handle_disconnect():
         print("🔌 Client disconnected")
+        # Ensure buffer is cleared on disconnect to avoid cross-session leakage
+        try:
+            if hasattr(init_socketio, 'handle_audio_chunk') and hasattr(init_socketio.handle_audio_chunk, 'chunks'):
+                init_socketio.handle_audio_chunk.chunks = []
+        except Exception:
+            pass
     
     @socketio.on('ping')
     def handle_ping():
@@ -27,13 +39,23 @@ def init_socketio(socketio):
         # Store audio chunk for processing
         if not hasattr(handle_audio_chunk, 'chunks'):
             handle_audio_chunk.chunks = []
+        # Keep a reference for connect/disconnect cleanup
+        init_socketio.handle_audio_chunk = handle_audio_chunk
+        MAX_BUFFERED_CHUNKS = 20  # ~4s @ 200ms
+        MIN_VALID_BYTES = 200     # ignore tiny noise frames
         
         try:
             b64_data = data.get('data', '')
             if b64_data:
                 audio_data = base64.b64decode(b64_data)
+                # Drop too-small chunks that are often silence/noise
+                if len(audio_data) < MIN_VALID_BYTES:
+                    return
                 handle_audio_chunk.chunks.append(audio_data)
-                print(f"📦 Audio chunk received: {len(audio_data)} bytes")
+                # Cap buffer to avoid unbounded growth/latency
+                if len(handle_audio_chunk.chunks) > MAX_BUFFERED_CHUNKS:
+                    handle_audio_chunk.chunks = handle_audio_chunk.chunks[-MAX_BUFFERED_CHUNKS:]
+                print(f"📦 Audio chunk received: {len(audio_data)} bytes (buffer={len(handle_audio_chunk.chunks)})")
         except Exception as e:
             print(f"❌ Error processing audio chunk: {e}")
     
@@ -44,6 +66,7 @@ def init_socketio(socketio):
         api_key = cfg.get('OPENAI_API_KEY', '')
         base_url = cfg.get('OPENAI_BASE_URL', 'https://api.openai.com/v1')
         session_id = f"ws_{int(time.time() * 1000)}"
+        MIN_TOTAL_BYTES = 400   # ~> ~130ms @ 24kbps opus approx
 
         # Prefer a direct final base64 payload if provided, else fall back to concatenated chunks
         audio_bytes = b''
@@ -67,6 +90,10 @@ def init_socketio(socketio):
         if not audio_bytes:
             emit('error', {'stage': 'audio', 'message': 'No audio data received'})
             return
+        # Ignore too-short audio likely to fail STT
+        if len(audio_bytes) < MIN_TOTAL_BYTES:
+            emit('error', {'stage': 'audio', 'message': 'Audio too short'})
+            return
         
         if not api_key:
             print(f"⚠️ {session_id}: No API key configured")
@@ -84,11 +111,25 @@ def init_socketio(socketio):
             data_stt = {'model': 'whisper-1'}
             headers = {'Authorization': f'Bearer {api_key}'}
             
-            resp = requests.post(f'{base_url}/audio/transcriptions', 
-                               files=files, data=data_stt, headers=headers, timeout=30)
-            
-            if resp.status_code == 200:
-                text = resp.json().get('text', '').strip()
+            # Retry STT up to 2 times with small backoff
+            stt_resp = None
+            for attempt in range(1, 3):
+                try:
+                    stt_resp = requests.post(
+                        f'{base_url}/audio/transcriptions',
+                        files={'file': ('audio.webm', io.BytesIO(audio_bytes), 'audio/webm')},
+                        data=data_stt,
+                        headers=headers,
+                        timeout=30
+                    )
+                    if stt_resp.status_code == 200:
+                        break
+                    time.sleep(0.4 * attempt)
+                except Exception:
+                    time.sleep(0.4 * attempt)
+
+            if stt_resp is not None and stt_resp.status_code == 200:
+                text = stt_resp.json().get('text', '').strip()
                 stt_time = time.time() - stt_start
                 
                 if text:
