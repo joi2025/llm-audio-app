@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import usePersonality from '../hooks/usePersonality'
 import useSocketIO from '../hooks/useSocketIO'
 import useAutoVoice from '../hooks/useAutoVoice'
@@ -25,7 +25,7 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
   const autoStopTimerRef = useRef(null)
 
   // Audio test beep (speakers check)
-  const playBeep = () => {
+  const playBeep = useCallback(() => {
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext
       if (!AudioCtx) return
@@ -44,89 +44,32 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
     } catch (e) {
       console.warn('[VoiceCircleV2] Audio test error:', e)
     }
-  }
+  }, [])
 
   
   
   const { personalityData, currentPersonality, applyPersonality } = usePersonality()
   
-  // Auto voice detection when in auto mode
-  const autoVoice = useAutoVoice({
-    enabled: autoMode && isAutoActive,
-    isAssistantSpeaking: assistantSpeaking,
-    onAudioChunk: (chunkB64) => {
-      if (!isConnected) return
-      // Stream inmediato para latencia mínima
-      emit('audio_chunk', { data: chunkB64, audio: chunkB64 })
-    },
-    onAudioCapture: (finalB64) => {
-      console.log('[V2 Auto] Audio captured automatically (final)')
-      setTranscript('Procesando...')
-      if (!isConnected) {
-        setError('No hay conexión con el servidor')
-        return
-      }
-      // Fallback: si aún no enviamos audio_end en silencio, hacerlo aquí
-      if (!autoEndSentRef.current) {
-        setTimeout(() => {
-          emit('audio_end', { 
-            audio: finalB64,
-            personality: currentPersonality,
-            prefer_short_answer: true,
-            timestamp: Date.now()
-          })
-        }, 50)
-        autoEndSentRef.current = true
-      }
-    },
-    onSpeechStart: () => {
-      console.log('[V2 Auto] Speech detected')
-      // If assistant is speaking, interrupt TTS immediately for responsiveness
-      if (ttsAudioRef.current) {
-        try { ttsAudioRef.current.pause() } catch {}
-        ttsAudioRef.current.src = ''
-        ttsAudioRef.current = null
-        isSpeakingRef.current = false
-        setAssistantSpeaking(false)
-      }
-      autoEndSentRef.current = false
-      setIsListening(true)
-      setTranscript('')
-      setResponse('')
-    },
-    onSilenceDetected: () => {
-      console.log('[V2 Auto] Silence detected, sending audio')
-      setIsListening(false)
-      setIsProcessing(true)
-      if (!isConnected) return
-      if (!autoEndSentRef.current) {
-        setTimeout(() => {
-          emit('audio_end', {
-            personality: currentPersonality,
-            prefer_short_answer: true,
-            timestamp: Date.now()
-          })
-        }, 50)
-        autoEndSentRef.current = true
-      }
-    }
-  })
+  // Stabilize emit via ref to avoid re-creating handlers
+  const emitRef = useRef(null)
 
-  // Watchdog: si isProcessing tarda demasiado, rearmar estados
-  useEffect(() => {
-    if (!isProcessing) return
-    const t = setTimeout(() => {
-      console.warn('[VoiceCircleV2] Processing watchdog timeout, resetting state')
-      setIsProcessing(false)
-      if (autoMode && isAutoActive) {
-        try { autoVoice.resetProcessing() } catch {}
-      }
-    }, 12000)
-    return () => clearTimeout(t)
-  }, [isProcessing, autoMode, isAutoActive, autoVoice])
+  // Debounced transcript updates (200ms) with last-value guard — define EARLY to avoid TDZ in onMessage
+  const lastTranscriptRef = useRef('')
+  const debouncedTimerRef = useRef(null)
+  const debouncedSetTranscript = useCallback((text) => {
+    if (text === lastTranscriptRef.current) return
+    if (debouncedTimerRef.current) clearTimeout(debouncedTimerRef.current)
+    debouncedTimerRef.current = setTimeout(() => {
+      lastTranscriptRef.current = text
+      setTranscript(text)
+    }, 200)
+  }, [])
 
-  // Socket.IO connection with real message handling
-  const { isConnected, emit } = useSocketIO(wsUrl, {
+  // Ref to access autoVoice methods inside early socket callbacks without TDZ
+  const autoVoiceRef = useRef(null)
+
+  // Move Socket.IO setup BEFORE callbacks that depend on isConnected to avoid TDZ
+  const { isConnected, emit } = useSocketIO(wsUrl, useMemo(() => ({
     autoConnect: true,
     onConnect: () => {
       console.log('[VoiceCircleV2] Connected')
@@ -143,7 +86,7 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
         isSpeakingRef.current = false
         setAssistantSpeaking(false)
         if (autoMode && isAutoActive) {
-          try { autoVoice.resetProcessing() } catch {}
+          try { autoVoiceRef.current?.resetProcessing?.() } catch {}
         }
         return
       }
@@ -151,7 +94,8 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
       // Handle STT result (tolerant keys)
       const sttText = data?.transcript || data?.transcription || undefined
       if (sttText) {
-        setTranscript(sttText)
+        // Debounce transcript updates to avoid re-render per chunk
+        debouncedSetTranscript(sttText)
         setIsListening(false)
         setIsProcessing(true)
       }
@@ -163,7 +107,7 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
         setIsProcessing(false)
         // If there's no TTS or it's already done, re-arm auto voice immediately
         if (autoMode && isAutoActive && !assistantSpeaking) {
-          try { autoVoice.resetProcessing() } catch {}
+          try { autoVoiceRef.current?.resetProcessing?.() } catch {}
         }
       }
 
@@ -191,7 +135,7 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
             isSpeakingRef.current = false
             setAssistantSpeaking(false)
             if (autoMode && isAutoActive) {
-              try { autoVoice.resetProcessing() } catch {}
+              try { autoVoiceRef.current?.resetProcessing?.() } catch {}
             }
             ttsAudioRef.current = null
           }
@@ -207,7 +151,7 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
               isSpeakingRef.current = false
               setAssistantSpeaking(false)
               if (autoMode && isAutoActive) {
-                try { autoVoice.resetProcessing() } catch {}
+                try { autoVoiceRef.current?.resetProcessing?.() } catch {}
               }
               ttsAudioRef.current = null
             })
@@ -219,7 +163,98 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
         }
       }
     }
-  })
+  }), []))
+
+  const onAutoAudioChunk = useCallback((chunkB64) => {
+    if (!isConnected) return
+    emitRef.current && emitRef.current('audio_chunk', { data: chunkB64, audio: chunkB64 })
+  }, [isConnected])
+
+  const onAutoAudioCapture = useCallback((finalB64) => {
+      console.log('[V2 Auto] Audio captured automatically (final)')
+      setTranscript('Procesando...')
+      if (!isConnected) {
+        setError('No hay conexión con el servidor')
+        return
+      }
+      // Fallback: si aún no enviamos audio_end en silencio, hacerlo aquí
+      if (!autoEndSentRef.current) {
+        setTimeout(() => {
+          emitRef.current && emitRef.current('audio_end', { 
+            audio: finalB64,
+            personality: currentPersonality,
+            prefer_short_answer: true,
+            timestamp: Date.now()
+          })
+        }, 50)
+        autoEndSentRef.current = true
+      }
+  }, [isConnected, currentPersonality])
+
+  const onAutoSpeechStart = useCallback(() => {
+      console.log('[V2 Auto] Speech detected')
+      // If assistant is speaking, interrupt TTS immediately for responsiveness
+      if (ttsAudioRef.current) {
+        try { ttsAudioRef.current.pause() } catch {}
+        ttsAudioRef.current.src = ''
+        ttsAudioRef.current = null
+        isSpeakingRef.current = false
+        setAssistantSpeaking(false)
+      }
+      autoEndSentRef.current = false
+      setIsListening(true)
+      setTranscript('')
+      setResponse('')
+  }, [])
+
+  const onAutoSilenceDetected = useCallback(() => {
+      console.log('[V2 Auto] Silence detected, sending audio')
+      setIsListening(false)
+      setIsProcessing(true)
+      if (!isConnected) return
+      if (!autoEndSentRef.current) {
+        setTimeout(() => {
+          emitRef.current && emitRef.current('audio_end', {
+            personality: currentPersonality,
+            prefer_short_answer: true,
+            timestamp: Date.now()
+          })
+        }, 50)
+        autoEndSentRef.current = true
+      }
+  }, [isConnected, currentPersonality])
+
+  // Auto voice detection when in auto mode (options object memoized)
+  const autoVoice = useAutoVoice(useMemo(() => ({
+    enabled: autoMode && isAutoActive,
+    isAssistantSpeaking: assistantSpeaking,
+    onAudioChunk: onAutoAudioChunk,
+    onAudioCapture: onAutoAudioCapture,
+    onSpeechStart: onAutoSpeechStart,
+    onSilenceDetected: onAutoSilenceDetected
+  }), [autoMode, isAutoActive, assistantSpeaking, onAutoAudioChunk, onAutoAudioCapture, onAutoSpeechStart, onAutoSilenceDetected]))
+
+  // Update ref after autoVoice is constructed
+  useEffect(() => { autoVoiceRef.current = autoVoice }, [autoVoice])
+
+  // Watchdog: si isProcessing tarda demasiado, rearmar estados
+  useEffect(() => {
+    if (!isProcessing) return
+    const t = setTimeout(() => {
+      console.warn('[VoiceCircleV2] Processing watchdog timeout, resetting state')
+      setIsProcessing(false)
+      if (autoMode && isAutoActive) {
+        try { autoVoice.resetProcessing() } catch {}
+      }
+    }, 12000)
+    return () => clearTimeout(t)
+  }, [isProcessing, autoMode, isAutoActive, autoVoice])
+
+
+  // Keep the latest emit function in a ref (after useSocketIO is ready)
+  useEffect(() => {
+    emitRef.current = emit
+  }, [emit])
 
   // Auto-clear transient errors to avoid overlays lingering
   useEffect(() => {
@@ -236,7 +271,7 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
     return () => window.removeEventListener('keydown', onKey)
   }, [showPersonalities])
 
-  const getStatusText = () => {
+  const getStatusText = useCallback(() => {
     if (error) return error
     if (!micPermission) return 'Permitir micrófono'
     if (!isConnected) return 'Conectando...'
@@ -248,13 +283,13 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
     if (isProcessing) return 'Procesando...'
     if (isListening) return 'Escuchando... (toca para parar)'
     return 'Toca para hablar'
-  }
+  }, [error, micPermission, isConnected, autoMode, isAutoActive, isProcessing, isListening])
 
-  const getCircleColor = () => {
+  const getCircleColor = useCallback(() => {
     if (isProcessing) return '#fbbf24'
     if (isListening) return '#10b981'
     return personalityData?.color || '#60a5fa'
-  }
+  }, [isProcessing, isListening, personalityData?.color])
 
   // Initialize microphone
   useEffect(() => {

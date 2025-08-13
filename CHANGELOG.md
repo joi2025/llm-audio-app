@@ -1,5 +1,53 @@
 # Changelog
 
+## 2025-08-13 - Frontend: TDZ fix VoiceCircle v2 (rama: correciones-gpt51.0)
+
+- Solución quirúrgica al error de ejecución “Cannot access 'B' before initialization” en `frontend/src/components/VoiceCircleV2.jsx`.
+  - Reordenado: definición de utilidades (`debouncedSetTranscript` y refs) ANTES de `useSocketIO()` para evitar Zona de Muerte Temporal (TDZ) en `onMessage`.
+  - Uso de `autoVoiceRef` para invocar `resetProcessing()` dentro de callbacks tempranos del socket sin depender del orden de inicialización del hook `useAutoVoice`.
+  - Sin cambios funcionales de negocio; sólo orden y referencias seguras.
+- Verificaciones adicionales:
+  - Revisión de `useSocketIO.js`, `useAutoVoice.js`, `useMicVAD.js`, `usePersonality.js` y `VoiceAvatar.jsx` sin detectar ciclos de import.
+  - `App.jsx` mantiene `VITE_BACKEND_URL` como base única y desconecta el socket global al entrar a v2/v2-auto para evitar sockets duplicados.
+- Recomendaciones de QA:
+  - Refresco duro del navegador tras el cambio (evitar HMR con closures obsoletos).
+  - Probar flujos v2 y v2-auto con STT → LLM → TTS, y rearmado automático.
+
+## 2025-08-13 - Backend: WebSocket unificado (Socket.IO)
+
+- Añadido `backend/app/api/websocket_unified.py` con:
+  - Buffer circular por conexión (chunks ~250ms, latencia objetivo <100ms).
+  - Heartbeat servidor cada 30s (`server_heartbeat`).
+  - Rate limiting con token-bucket (4 req/s, burst 8) para `audio_chunk`.
+  - Métricas por sesión (`get_metrics` -> `metrics`).
+  - Pipeline STT → LLM → TTS con tolerancia de errores y compatibilidad de eventos: `result_stt`, `result_llm`, `audio`, `tts_end`, `error`.
+  - Compatibilidad completa con cliente React (Socket.IO, mensajes y campos existentes).
+- Migración recomendada:
+  - En el boot del servidor, reemplazar `init_socketio` por `init_unified` desde `websocket_unified.py`.
+  - Deprecar `backend/app/api/websocket_socketio.py` y removerlo tras validación.
+  - Mantener una única implementación WebSocket (Socket.IO) en producción.
+
+## 2025-08-13 - Refactor: Consolidación de AdminPanel y VoiceCircle v2
+
+- Backup creado: `backups/refactor_20250813_091434/`
+- Eliminados (con backup):
+  - `frontend/src/components/AdminPanelClean.jsx`
+  - `frontend/src/components/AdminPanelFixed.jsx`
+  - `frontend/src/components/AdminPanelNew.jsx`
+  - `frontend/src/components/VoiceCircleV2_Simple.jsx`
+  - `frontend/src/components/VoiceCircleV2Auto_backup.jsx`
+  - `frontend/src/components/VoiceCircleV2Auto_old.jsx`
+  - `backend/app/api/websocket.py`
+- Mantenidos y a optimizar:
+  - `frontend/src/components/AdminPanel.jsx` (principal, UI de API Key y configuración unificadas)
+  - `frontend/src/components/VoiceCircleV2.jsx` (unificada, selector de personalidades)
+  - `frontend/src/components/VoiceCircleV2Auto.jsx` (modo automático con `useAutoVoice`)
+  - `backend/app/api/websocket_socketio.py` (único socket backend)
+- Notas:
+  - Unificación de estado y configuración; `VITE_BACKEND_URL` como base URL única.
+  - VoiceCircle v2 mantiene health strip, beep y parsing tolerante (`transcript/transcription/text`, `audio/audio_b64/data`).
+  - V2 Auto usa `useAutoVoice` (streaming=false) y reproduce audio mp3 base64; eventos: `result_stt`, `result_llm`, `tts_end`, `error`.
+
 ## WIP - puliendo-sin-acabar (VoiceCircle v2 pulido, no finalizado)
 
 - VoiceCircleV2 (`frontend/src/components/VoiceCircleV2.jsx`)
