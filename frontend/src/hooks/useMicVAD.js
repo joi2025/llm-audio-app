@@ -1,17 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-// 🚀 OPTIMIZED Voice Activity Detection - Gemini/GPT/Grok level performance
-// Ultra-responsive audio capture with intelligent silence detection
-// Optimized for Core i5 8GB systems using OpenAI API
+/**
+ * useMicVAD
+ * Low-level microphone Voice Activity Detection with MediaRecorder and WebAudio.
+ *
+ * Params:
+ *  - onChunk(b64): streaming base64 frames when streaming=true
+ *  - onFinal(b64): single final base64 when streaming=false (on stop)
+ *  - onSilenceEnd(): called when silence window ends a speaking turn
+ *  - onLevel(level): 0..1 signal level for UI/UX
+ *  - rmsThreshold, minVoiceMs, maxSilenceMs, chunkMs, streaming: tuning knobs
+ *
+ * Returns: { listening, startListening, stopListening }
+ */
 export default function useMicVAD({ 
   onChunk, 
   onFinal, 
   onSilenceEnd, 
   onLevel, 
-  rmsThreshold = 0.015,    // Base threshold; will be adjusted adaptively
+  rmsThreshold = 0.01,     // Lower threshold for Spanish; adjusted adaptively
   minVoiceMs = 200,        // Faster voice detection
   maxSilenceMs = 600,      // Quicker silence cutoff
-  chunkMs = 250,           // Smaller chunks for responsiveness
+  chunkMs = 200,           // Smaller chunks (~200ms) for lower latency
   streaming = true 
 } = {}) {
   const [listening, setListening] = useState(false)
@@ -58,7 +68,7 @@ export default function useMicVAD({
     const analyser = analyserRef.current
     if (!analyser) return
     
-    // 🎯 OPTIMIZED audio analysis - faster processing
+    // 🎯 Optimized audio analysis - using frequency-domain RMS
     const buf = new Uint8Array(analyser.frequencyBinCount)
     analyser.getByteFrequencyData(buf)  // Use frequency data for better voice detection
     
@@ -81,7 +91,7 @@ export default function useMicVAD({
     const enhancedRms = (rms * 0.3) + (voiceRms * 0.7)  // Combine for better detection
     
     onLevel && onLevel(Math.min(1, enhancedRms * 3))
-    // Adaptive threshold around ambient
+    // Adaptive threshold around ambient noise level
     const dyn = dynamicThresholdRef.current
     const isVoice = enhancedRms > dyn
     const now = performance.now()
@@ -117,7 +127,15 @@ export default function useMicVAD({
   const startListening = useCallback(async () => {
     if (listening) return
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          sampleRate: 16000,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: false
+        }
+      })
       mediaStreamRef.current = stream
 
       // WebAudio for VAD
@@ -129,7 +147,7 @@ export default function useMicVAD({
       source.connect(analyser)
       analyserRef.current = analyser
 
-      // Ambient calibration for 400ms to derive dynamic threshold
+      // Ambient calibration (~400ms) to derive dynamic threshold above background noise
       dynamicThresholdRef.current = rmsThreshold
       ambientLevelRef.current = 0
       const calibBuf = new Uint8Array(analyser.frequencyBinCount)
@@ -157,8 +175,8 @@ export default function useMicVAD({
       dynamicThresholdRef.current = Math.max(ambientLevelRef.current * 1.5, rmsThreshold)
       console.debug('[useMicVAD] 🎛️ Calibrated ambient=', ambientLevelRef.current.toFixed(4), 'dynThr=', dynamicThresholdRef.current.toFixed(4))
 
-      // MediaRecorder for chunks
-      // 🎙️ OPTIMIZED MediaRecorder - Ultra-low latency
+      // MediaRecorder for chunks (streaming) or single final blob (non-streaming)
+      // 🎙️ Optimized MediaRecorder - low bitrate to reduce payload/CPU
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
         ? 'audio/webm;codecs=opus'
         : MediaRecorder.isTypeSupported('audio/webm') 
@@ -169,7 +187,7 @@ export default function useMicVAD({
       
       const mr = new MediaRecorder(stream, { 
         mimeType,
-        audioBitsPerSecond: 32000  // Lower bitrate for smaller payloads
+        audioBitsPerSecond: 24000  // Slightly lower bitrate to reduce payloads further
       })
       
       mediaRecorderRef.current = mr

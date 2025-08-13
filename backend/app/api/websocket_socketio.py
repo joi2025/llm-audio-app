@@ -44,12 +44,24 @@ def init_socketio(socketio):
         api_key = cfg.get('OPENAI_API_KEY', '')
         base_url = cfg.get('OPENAI_BASE_URL', 'https://api.openai.com/v1')
         session_id = f"ws_{int(time.time() * 1000)}"
-        
-        # Get accumulated audio chunks
-        audio_chunks = getattr(handle_audio_chunk, 'chunks', [])
-        audio_bytes = b''.join(audio_chunks)
-        handle_audio_chunk.chunks = []  # Clear for next recording
-        
+
+        # Prefer a direct final base64 payload if provided, else fall back to concatenated chunks
+        audio_bytes = b''
+        try:
+            if isinstance(data, dict):
+                direct_b64 = data.get('audio') or data.get('audio_b64') or (data.get('data') if isinstance(data.get('data'), str) else None)
+                if direct_b64:
+                    audio_bytes = base64.b64decode(direct_b64)
+        except Exception as e:
+            print(f"⚠️ {session_id}: Invalid base64 in audio_end: {e}")
+            audio_bytes = b''
+
+        if not audio_bytes:
+            # Get accumulated audio chunks (streamed via 'audio_chunk')
+            audio_chunks = getattr(handle_audio_chunk, 'chunks', [])
+            audio_bytes = b''.join(audio_chunks)
+            handle_audio_chunk.chunks = []  # Clear for next recording
+
         print(f"🎯 Processing audio: {len(audio_bytes)} bytes")
         
         if not audio_bytes:

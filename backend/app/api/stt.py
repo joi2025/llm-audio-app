@@ -1,3 +1,8 @@
+"""Speech-to-Text (STT) API routes.
+
+Accepts multipart audio or JSON base64 and relays to an OpenAI-compatible
+transcriptions endpoint. Returns `{ text }`.
+"""
 import io
 import os
 import json
@@ -9,6 +14,7 @@ stt_bp = Blueprint('stt', __name__)
 
 
 def _openai_headers(api_key: str):
+    """Build minimal headers for OpenAI-compatible audio endpoints."""
     return {
         'Authorization': f'Bearer {api_key}',
     }
@@ -16,6 +22,14 @@ def _openai_headers(api_key: str):
 
 @stt_bp.post('/stt')
 def stt_transcribe():
+    """Transcribe audio to text.
+
+    Accepts either:
+      - multipart/form-data with field `audio`
+      - JSON with `audio_b64` (and optional `mime`)
+
+    Returns JSON `{ text }` or an error payload.
+    """
     cfg = current_app.config
     api_key = cfg.get('OPENAI_API_KEY', '')
     base_url = cfg.get('OPENAI_BASE_URL', 'https://api.openai.com/v1')
@@ -64,6 +78,7 @@ def stt_transcribe():
 
 
 def safe_text(r):
+    """Safely extract textual body for error reporting."""
     try:
         return r.text
     except Exception:

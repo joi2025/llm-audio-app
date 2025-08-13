@@ -55,6 +55,7 @@ export default function AdminPanel() {
   const save = useCallback(async () => {
     setSaving(true)
     try { 
+      console.debug('[AdminPanel] Saving settings', settings)
       await AdminAPI.setSettings(settings)
       await loadAll()
       alert('✅ Configuración guardada correctamente')
@@ -80,6 +81,7 @@ export default function AdminPanel() {
   const testApiKey = useCallback(async (keyToTest = null) => {
     setApiKeyStatus('testing')
     try {
+      console.debug('[AdminPanel] Testing API key')
       const result = await AdminAPI.testApiKey(keyToTest)
       setApiKeyStatus(result.valid ? 'valid' : 'invalid')
       alert(result.valid ? '✅ API Key válida' : `❌ API Key inválida: ${result.error}`)
@@ -135,25 +137,7 @@ export default function AdminPanel() {
     return logs.length > N ? logs.slice(logs.length - N) : logs
   }, [logs])
 
-  const TabButton = React.memo(function TabButton({ id, label, active, onClick }) {
-    return (
-      <button
-        onClick={onClick}
-        style={{
-          background: active ? 'rgba(59, 130, 246, 0.3)' : 'rgba(30, 41, 59, 0.5)',
-          border: active ? '1px solid rgba(59, 130, 246, 0.5)' : '1px solid rgba(75, 85, 99, 0.3)',
-          color: active ? '#60a5fa' : '#94a3b8',
-          padding: '10px 16px',
-          borderRadius: '8px',
-          cursor: 'pointer',
-          fontWeight: active ? 600 : 400,
-          transition: 'all 0.2s'
-        }}
-      >
-        {label}
-      </button>
-    )
-  })
+  // Eliminado TabButton redundante (no usado) en favor de clases CSS .tabs/.tab-btn
 
   const ConvoRow = React.memo(function ConvoRow({ c }) {
     return (
@@ -227,13 +211,13 @@ export default function AdminPanel() {
   }
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto', ['--persona']: personalityData?.color || '#60a5fa' }}>
       {/* Header con tabs */}
       <div style={{ marginBottom: '30px' }}>
         <h2 style={{ color: '#e2e8f0', marginBottom: '20px' }}>🛠️ Panel de Administración</h2>
         
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        <div className="tabs" style={{ marginBottom: '20px' }}>
           {[
             { id: 'status', label: '📊 Estado', icon: '📊' },
             { id: 'personalities', label: '🎭 Personalidades', icon: '🎭' },
@@ -244,16 +228,7 @@ export default function AdminPanel() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              style={{
-                background: activeTab === tab.id ? 'rgba(59, 130, 246, 0.3)' : 'rgba(30, 41, 59, 0.5)',
-                border: activeTab === tab.id ? '1px solid rgba(59, 130, 246, 0.5)' : '1px solid rgba(75, 85, 99, 0.3)',
-                color: activeTab === tab.id ? '#60a5fa' : '#94a3b8',
-                padding: '10px 16px',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontWeight: activeTab === tab.id ? 600 : 400,
-                transition: 'all 0.2s'
-              }}
+              className={`tab-btn${activeTab === tab.id ? ' active' : ''}`}
             >
               {tab.label}
             </button>

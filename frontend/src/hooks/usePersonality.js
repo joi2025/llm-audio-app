@@ -1,6 +1,17 @@
 import { useState, useEffect } from 'react'
 import { PERSONALITIES } from '../data/personalities'
 
+/**
+ * usePersonality
+ * Lightweight state hook to persist and apply persona presets (voice, prompt, color).
+ *
+ * Persists to localStorage under keys:
+ *  - voice_personality
+ *  - voice_settings
+ *
+ * Returns helpers to apply a personality, update arbitrary settings,
+ * and fetch a context-aware greeting for the active persona.
+ */
 export default function usePersonality() {
   const [currentPersonality, setCurrentPersonality] = useState(null)
   const [settings, setSettings] = useState({})

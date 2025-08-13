@@ -1,3 +1,29 @@
+## [Unreleased] - 2025-08-13
+
+### Added
+- Frontend Socket.IO heartbeat ping/pong every 10s with minimal logs (`frontend/src/hooks/useSocketIO.js`).
+
+### Changed
+- VAD tuned for Spanish prosody with lower thresholds and faster timings (`frontend/src/hooks/useAutoVoice.js`):
+  - silenceThreshold 0.008, speechThreshold 0.012, minSpeechDuration 240ms, maxSilenceDuration 900ms, interruptionDelay 600ms.
+- Ensure silence detection triggers even if recorder flips `isListening` (`useAutoVoice.js`).
+- Added processing watchdog to auto-reset `isProcessing` if backend stalls (10s) (`useAutoVoice.js`).
+- TTS is reliably interruptible: pauses any playing `<audio>` when user speech is detected (`useAutoVoice.js`, `VoiceCircleV2.jsx`).
+- Manual reconnect with exponential backoff (capped 5s) and online/offline awareness (`useSocketIO.js`).
+- Emit retries (3 attempts, 300ms) for robust delivery during transient disconnects (`useSocketIO.js`).
+- Align recorder for lower latency: 24 kbps and 200ms chunks in `VoiceCircleV2.jsx`.
+- On disconnect, clear `isProcessing` and `assistantSpeaking` to avoid stuck UI (`VoiceCircleV2.jsx`).
+- AdminPanel: remove unused `TabButton`, add concise debug logs on save and API key test (`AdminPanel.jsx`).
+
+### Fixed
+- ReferenceError “cleanupAudio is not defined” by removing undefined cleanup in `useAutoVoice.js`.
+- Minor TDZ/race protections by using refs and effect ordering in `VoiceCircleV2.jsx`.
+
+### Notes
+- No backend API changes required. `db.py` reviewed; WAL and indices OK.
+- Security: API key validation ensures `sk-` prefix; no sensitive keys logged.
+- Performance: VAD uses 16 kHz mono and 200ms chunks; CPU kept low; no new deps added.
+
 # Changelog
 
 ## 2025-08-13 - Frontend: TDZ fix VoiceCircle v2 (rama: correciones-gpt51.0)

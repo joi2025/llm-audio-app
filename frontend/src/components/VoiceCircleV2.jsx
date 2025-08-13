@@ -76,7 +76,13 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
       setTranscript('')
       setResponse('')
     },
-    onDisconnect: () => console.log('[VoiceCircleV2] Disconnected'),
+    onDisconnect: () => {
+      console.log('[VoiceCircleV2] Disconnected')
+      // Avoid UI stuck in processing when transport drops mid-turn
+      setIsProcessing(false)
+      // Consider assistant not speaking on disconnect
+      setAssistantSpeaking(false)
+    },
     onError: (err) => console.error('[VoiceCircleV2] Error:', err),
     onMessage: (data) => {
       console.log('[VoiceCircleV2] Received:', data)
@@ -352,7 +358,7 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
       
       mediaRecorderRef.current = new MediaRecorder(streamRef.current, {
         mimeType: 'audio/webm;codecs=opus',
-        audioBitsPerSecond: 32000
+        audioBitsPerSecond: 24000
       })
 
       mediaRecorderRef.current.ondataavailable = (event) => {
@@ -384,7 +390,7 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
       }
 
       // Request frequent chunks for lower latency streaming
-      mediaRecorderRef.current.start(250)
+      mediaRecorderRef.current.start(200)
       console.log('[VoiceCircleV2] Recording started')
 
       // Auto-stop after 10 seconds
@@ -475,7 +481,7 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
   }
 
   return (
-    <div style={{
+    <div className="vcv2" style={{
       minHeight: '100vh',
       background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
       display: 'flex',
@@ -483,10 +489,12 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
       alignItems: 'center',
       justifyContent: 'center',
       padding: '20px',
-      color: '#e2e8f0'
+      color: '#e2e8f0',
+      // Expose personality color to CSS via variable
+      ['--persona']: personalityData?.color || '#60a5fa'
     }}>
       {/* Header */}
-      <div style={{
+      <div className="fixed-header" style={{
         position: 'absolute',
         top: '20px',
         left: '20px',
@@ -530,38 +538,25 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
       </div>
 
       {/* Health strip */}
-      <div style={{
-        display: 'flex',
-        gap: '10px',
-        marginBottom: '20px'
-      }}>
-        <span style={{
+      <div className="health-strip" style={{ marginBottom: '20px' }}>
+        <span className="pill" style={{
           background: micPermission ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
           border: micPermission ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(239,68,68,0.3)',
-          color: micPermission ? '#34d399' : '#f87171',
-          padding: '6px 10px',
-          borderRadius: '8px',
-          fontSize: '0.85em'
+          color: micPermission ? '#34d399' : '#f87171'
         }}>
           🎙️ Mic: {micPermission ? 'OK' : 'Sin permiso'}
         </span>
-        <span style={{
+        <span className="pill" style={{
           background: online ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
           border: online ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(239,68,68,0.3)',
-          color: online ? '#34d399' : '#f87171',
-          padding: '6px 10px',
-          borderRadius: '8px',
-          fontSize: '0.85em'
+          color: online ? '#34d399' : '#f87171'
         }}>
           🌐 Red: {online ? 'OK' : 'Offline'}
         </span>
-        <span style={{
+        <span className="pill" style={{
           background: isConnected ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
           border: isConnected ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(239,68,68,0.3)',
-          color: isConnected ? '#34d399' : '#f87171',
-          padding: '6px 10px',
-          borderRadius: '8px',
-          fontSize: '0.85em'
+          color: isConnected ? '#34d399' : '#f87171'
         }}>
           🖥️ Servidor: {isConnected ? 'OK' : 'Desconectado'}
         </span>
@@ -581,6 +576,7 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
       {/* Main Circle */}
       <div 
         onClick={!autoMode || !isAutoActive ? handleStartListening : undefined}
+        className={`voice-circle${isListening ? ' listening' : ''}${isProcessing ? ' processing' : ''}`}
         style={{
           width: '200px',
           height: '200px',
@@ -593,7 +589,6 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
           justifyContent: 'center',
           cursor: isConnected ? 'pointer' : 'not-allowed',
           transition: 'all 0.3s ease',
-          transform: isListening ? 'scale(1.1)' : 'scale(1)',
           boxShadow: `0 0 ${isListening ? '30px' : '15px'} ${getCircleColor()}60`,
           marginBottom: '40px'
         }}
@@ -696,27 +691,8 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
 
       {/* Personality Selector Modal */}
       {showPersonalities && (
-        <div onClick={(e) => { if (e.target === e.currentTarget) setShowPersonalities(false) }} style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.8)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            background: '#1e293b',
-            borderRadius: '16px',
-            padding: '30px',
-            maxWidth: '800px',
-            width: '90%',
-            maxHeight: '80vh',
-            overflow: 'auto'
-          }}>
+        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowPersonalities(false) }}>
+          <div className="modal-card">
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
