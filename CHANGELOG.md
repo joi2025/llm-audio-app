@@ -1,4 +1,4 @@
-## [Unreleased] - 2025-08-13
+## 2.0.0 - 2025-08-13
 
 ### Added
 - Frontend Socket.IO heartbeat ping/pong every 10s with minimal logs (`frontend/src/hooks/useSocketIO.js`).
