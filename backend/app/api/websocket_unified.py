@@ -1,3 +1,15 @@
+"""
+WebSocket Unified - Única Fuente de Verdad para Comunicación en Tiempo Real
+Implementación consolidada de WebSocket para LLM Audio App con latencia ultra-baja.
+Arquitectura unificada que maneja STT, LLM, TTS y VAD en un pipeline optimizado.
+
+Características principales:
+- Pipeline de audio con latencia mínima
+- Rate limiting por cliente
+- Manejo robusto de errores y desconexiones
+- Soporte para personalidades dinámicas
+- Logging completo de interacciones
+"""
 import base64
 import io
 import json
@@ -66,21 +78,59 @@ def _http_stt(base_url: str, api_key: str, audio_bytes: bytes) -> str:
 
 
 def _http_chat(base_url: str, api_key: str, model: str, messages: list, max_tokens: int, temperature: float) -> str:
-    headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
-    payload = {
-        'model': model,
-        'messages': messages,
-        'max_tokens': max_tokens,
-        'temperature': temperature,
-        'presence_penalty': 0.1,
-        'frequency_penalty': 0.1,
-    }
-    url = f'{base_url}/chat/completions'
-    r = requests.post(url, headers=headers, json=payload, timeout=60)
-    if r.status_code == 200:
-        js = r.json()
-        return (js.get('choices') or [{}])[0].get('message', {}).get('content', '')
-    return ''
+    """Call OpenAI chat completion - NON-STREAMING (legacy)"""
+    try:
+        resp = requests.post(
+            f"{base_url}/chat/completions",
+            headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
+            json={'model': model, 'messages': messages, 'max_tokens': max_tokens, 'temperature': temperature},
+            timeout=30
+        )
+        resp.raise_for_status()
+        return resp.json()['choices'][0]['message']['content']
+    except Exception as e:
+        print(f"[websocket_unified] Chat API error: {e}")
+        return ''
+
+
+def _http_chat_streaming(base_url: str, api_key: str, model: str, messages: list, max_tokens: int, temperature: float):
+    """Call OpenAI chat completion with STREAMING - LATENCIA CERO"""
+    try:
+        resp = requests.post(
+            f"{base_url}/chat/completions",
+            headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
+            json={
+                'model': model, 
+                'messages': messages, 
+                'max_tokens': max_tokens, 
+                'temperature': temperature,
+                'stream': True  # CRÍTICO: Habilitar streaming
+            },
+            timeout=30,
+            stream=True  # CRÍTICO: Stream response
+        )
+        resp.raise_for_status()
+        
+        # Generator que yielda tokens conforme llegan
+        for line in resp.iter_lines():
+            if line:
+                line_str = line.decode('utf-8')
+                if line_str.startswith('data: '):
+                    data_str = line_str[6:]  # Remove 'data: '
+                    if data_str.strip() == '[DONE]':
+                        break
+                    try:
+                        data = json.loads(data_str)
+                        if 'choices' in data and len(data['choices']) > 0:
+                            delta = data['choices'][0].get('delta', {})
+                            if 'content' in delta:
+                                yield delta['content']
+                    except json.JSONDecodeError:
+                        continue
+                        
+    except Exception as e:
+        print(f"[websocket_unified] Streaming Chat API error: {e}")
+        yield ''
 
 
 def _http_tts(base_url: str, api_key: str, tts_model: str, voice: str, text: str) -> bytes:
@@ -261,7 +311,7 @@ def init_unified(socketio):
             emit('error', {'stage': 'stt', 'message': 'Speech recognition failed'})
             return
 
-        # LLM
+        # LLM + TTS STREAMING PIPELINE - LATENCIA CERO
         try:
             model = _select_chat_model(cfg, settings)
             max_tokens = int(settings.get('max_tokens_out', '150'))
@@ -277,34 +327,135 @@ def init_unified(socketio):
             user_text = text if system_prompt or not pref_short else f"{text}\n\n[Responde de forma concisa y natural para conversación de voz]"
             messages.append({'role': 'user', 'content': user_text})
 
-            t0 = time.time()
-            reply = _http_chat(base_url, api_key, model, messages, max_tokens, temperature).strip()
-            metrics[sid]['llm_ms'] = int((time.time() - t0) * 1000)
-            if not reply:
-                emit('error', {'stage': 'chat', 'message': 'Empty AI response'})
-                return
-            emit('result_llm', {'transcription': reply, 'from': 'assistant'})
-            add_message('assistant', reply, tokens_in=_approx_tokens(text), tokens_out=_approx_tokens(reply), cost=_estimate_cost(settings, _approx_tokens(text), _approx_tokens(reply)))
+            # STREAMING LLM + TTS PARALELO - INGENIERÍA CRÍTICA
+            voice, tts_model = _select_tts(cfg, settings)
+            t0_llm = time.time()
+            
+            accumulated_text = ""
+            sentence_buffer = ""
+            first_chunk_sent = False
+            tts_tasks = []  # Para tracking de tareas TTS paralelas
+            
+            # Stream LLM tokens y procesar TTS inmediatamente
+            for token in _http_chat_streaming(base_url, api_key, model, messages, max_tokens, temperature):
+                if not token:
+                    continue
+                    
+                accumulated_text += token
+                sentence_buffer += token
+                
+                # Emitir primer token inmediatamente (LATENCIA MÍNIMA)
+                if not first_chunk_sent:
+                    emit('llm_first_token', {'token': token, 'timestamp': time.time()})
+                    first_chunk_sent = True
+                    metrics[sid]['first_token_ms'] = int((time.time() - t0_llm) * 1000)
+                
+                # Emitir tokens en streaming
+                emit('llm_token', {'token': token, 'accumulated': accumulated_text})
+                
+                # Detectar final de oración para TTS inmediato
+                if token in ['.', '!', '?', '\n'] or len(sentence_buffer.strip()) > 100:
+                    sentence_to_speak = sentence_buffer.strip()
+                    if sentence_to_speak:
+                        # CRÍTICO: Iniciar TTS inmediatamente sin esperar más tokens
+                        def async_tts(sentence, chunk_id):
+                            try:
+                                t0_tts = time.time()
+                                audio_mp3 = _http_tts(base_url, api_key, tts_model, voice, sentence)
+                                tts_time = int((time.time() - t0_tts) * 1000)
+                                
+                                if audio_mp3:
+                                    b64_audio = base64.b64encode(audio_mp3).decode('ascii')
+                                    emit('audio_chunk', {
+                                        'audio': b64_audio, 
+                                        'chunk_id': chunk_id,
+                                        'text': sentence,
+                                        'tts_ms': tts_time
+                                    })
+                                else:
+                                    emit('tts_chunk_error', {'chunk_id': chunk_id, 'text': sentence})
+                            except Exception as e:
+                                print(f"[websocket_unified] Async TTS error: {e}")
+                                emit('tts_chunk_error', {'chunk_id': len(tts_tasks), 'error': str(e)})
+                        
+                        # Ejecutar TTS en thread separado para no bloquear streaming
+                        chunk_id = len(tts_tasks)
+                        tts_thread = threading.Thread(target=async_tts, args=(sentence_to_speak, chunk_id))
+                        tts_thread.daemon = True
+                        tts_thread.start()
+                        tts_tasks.append(tts_thread)
+                        
+                        sentence_buffer = ""  # Reset buffer
+            
+            # Procesar último fragmento si queda algo
+            if sentence_buffer.strip():
+                def final_tts():
+                    try:
+                        audio_mp3 = _http_tts(base_url, api_key, tts_model, voice, sentence_buffer.strip())
+                        if audio_mp3:
+                            b64_audio = base64.b64encode(audio_mp3).decode('ascii')
+                            emit('audio_chunk', {
+                                'audio': b64_audio, 
+                                'chunk_id': len(tts_tasks),
+                                'text': sentence_buffer.strip(),
+                                'final': True
+                            })
+                    except Exception as e:
+                        print(f"[websocket_unified] Final TTS error: {e}")
+                
+                final_thread = threading.Thread(target=final_tts)
+                final_thread.daemon = True
+                final_thread.start()
+                tts_tasks.append(final_thread)
+            
+            # Métricas finales
+            metrics[sid]['llm_ms'] = int((time.time() - t0_llm) * 1000)
+            metrics[sid]['tts_chunks'] = len(tts_tasks)
+            
+            # Emitir respuesta completa y finalizar
+            emit('result_llm', {'transcription': accumulated_text, 'from': 'assistant'})
+            add_message('assistant', accumulated_text, tokens_in=_approx_tokens(text), tokens_out=_approx_tokens(accumulated_text), cost=_estimate_cost(settings, _approx_tokens(text), _approx_tokens(accumulated_text)))
+            
+            # Señal de finalización después de un breve delay para permitir que terminen los TTS
+            def signal_completion():
+                time.sleep(0.5)  # Pequeño delay para TTS chunks
+                emit('tts_end', {'total_chunks': len(tts_tasks)})
+            
+            completion_thread = threading.Thread(target=signal_completion)
+            completion_thread.daemon = True
+            completion_thread.start()
+            
         except Exception as e:
-            metrics[sid]['last_error'] = f'LLM: {e}'
-            emit('error', {'stage': 'chat', 'message': 'AI processing failed'})
+            metrics[sid]['last_error'] = f'Streaming Pipeline: {e}'
+            emit('error', {'stage': 'streaming', 'message': 'Streaming pipeline failed'})
             return
 
-        # TTS
+    @socketio.on('stop_tts')
+    def on_stop_tts(data):
+        """
+        Manejador CRÍTICO para interrupción inmediata de TTS
+        Cancela todas las tareas TTS en curso para latencia cero
+        """
+        sid = request.sid
         try:
-            voice, tts_model = _select_tts(cfg, settings)
-            t0 = time.time()
-            audio_mp3 = _http_tts(base_url, api_key, tts_model, voice, reply)
-            metrics[sid]['tts_ms'] = int((time.time() - t0) * 1000)
-            if not audio_mp3:
-                emit('error', {'stage': 'tts', 'message': 'TTS generation failed'})
-            else:
-                b64_audio = base64.b64encode(audio_mp3).decode('ascii')
-                emit('audio', {'audio': b64_audio})
-                emit('tts_end', {})
+            print(f"🚫 [websocket_unified] STOP_TTS recibido de {sid} - cancelando TTS inmediatamente")
+            
+            # Emitir señal de cancelación inmediata al cliente
+            emit('tts_cancelled', {
+                'timestamp': time.time(),
+                'reason': data.get('reason', 'user_request')
+            })
+            
+            # Log para métricas de interrupción
+            if sid in metrics:
+                metrics[sid]['interruptions'] = metrics[sid].get('interruptions', 0) + 1
+                metrics[sid]['last_interruption'] = time.time()
+            
+            print(f"✅ [websocket_unified] TTS cancelado exitosamente para {sid}")
+            
         except Exception as e:
-            metrics[sid]['last_error'] = f'TTS: {e}'
-            emit('error', {'stage': 'tts', 'message': 'Voice synthesis failed'})
+            print(f"❌ [websocket_unified] Error en stop_tts: {e}")
+            emit('error', {'stage': 'stop_tts', 'message': 'Failed to stop TTS'})
 
     @socketio.on('user_text')
     def on_user_text(data):

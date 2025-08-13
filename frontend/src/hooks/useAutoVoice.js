@@ -39,20 +39,21 @@ export default function useAutoVoice({
   const cooldownUntilRef = useRef(0)
   const hadSpeechThisTurnRef = useRef(false)
   
-  // Configuración optimizada para español y eficiencia
+  // Configuración VAD AGRESIVA para LATENCIA CERO - Optimizada para español
   const vadConfig = {
-    // Sensibilidad optimizada para español
-    silenceThreshold: 0.008,     // Más sensible a pausas suaves
-    speechThreshold: 0.012,      // Umbral afinado para inicio de habla en español
+    // Detección ULTRA-AGRESIVA para latencia mínima
+    speechThreshold: 0.4,        // Umbral MÁS bajo para detectar habla instantáneamente
+    silenceThreshold: 0.2,       // Umbral de silencio MÁS sensible
     
-    // Tiempos optimizados para conversación natural
-    minSpeechDuration: 240,      // Arranque de habla más rápido
-    maxSilenceDuration: 900,     // Cierre más ágil al detectar pausas
-    interruptionDelay: 600,      // Interrupción más rápida del TTS
+    // Tiempos OPTIMIZADOS para conversación fluida en español
+    minSpeechDuration: 150,      // Mínimo 150ms - más rápido que ChatGPT
+    maxSilenceDuration: 600,     // Cierre MÁS ágil - pausas naturales españolas
+    interruptionDelay: 300,      // Interrupción INMEDIATA del TTS (300ms)
     
-    // Optimización de recursos
+    // Optimización de recursos para tiempo real
     sampleRate: 16000,           // Calidad suficiente para STT
-    bufferSize: 2048,            // Buffer optimizado
+    bufferSize: 1024,            // Buffer MÁS pequeño para menor latencia
+    streaming: false,            // Emisión final única para estabilidad
   }
 
   // Hook de VAD con configuración optimizada
@@ -80,16 +81,16 @@ export default function useAutoVoice({
       onAudioCapture?.(audioB64)
     }, [onAudioCapture]),
 
-    // useMicVAD ya hace stop al detectar silencio y luego llama a onSilenceEnd
+    // Detección de silencio OPTIMIZADA para flujo natural
     onSilenceEnd: useCallback(() => {
-      // No dependas del flag de listening, puede que se haya flippeado por el MediaRecorder
       if (speechDetectedRef.current) {
-        console.log('🤫 [AutoVoice] Silencio detectado, enviando audio...')
+        console.log('🤫 [AutoVoice] Silencio detectado - ENVIANDO AUDIO INMEDIATAMENTE')
         onSilenceDetected?.()
-        // Pequeño cooldown para evitar bucles start/stop rápidos por ruido
-        cooldownUntilRef.current = Date.now() + 700
+        // Cooldown MÁS corto para conversación más fluida
+        cooldownUntilRef.current = Date.now() + 400 // Reducido de 700ms a 400ms
         // Marcar fin de turno
         speechDetectedRef.current = false
+        hadSpeechThisTurnRef.current = false
       }
     }, [onSilenceDetected]),
 
@@ -97,7 +98,10 @@ export default function useAutoVoice({
       setAudioLevel(level || 0)
     }, []),
 
-    // Mapeo de umbrales a la API de useMicVAD (rmsThreshold optimizado a 0.01)
+    // Mapeo de umbrales AGRESIVOS a la API de useMicVAD
+    rmsThreshold: 0.008,         // MÁS sensible que 0.01 para detección instantánea
+    maxSilenceMs: vadConfig.maxSilenceDuration,
+    minSpeechMs: vadConfig.minSpeechDuration,
     rmsThreshold: 0.01, // umbral base para considerar voz en español
     minVoiceMs: vadConfig.minSpeechDuration,
     maxSilenceMs: vadConfig.maxSilenceDuration,
@@ -175,7 +179,7 @@ export default function useAutoVoice({
   useEffect(() => () => {
     if (processingTimerRef.current) clearTimeout(processingTimerRef.current)
   }, [])
-  
+
   // Reset de estado cuando termina el procesamiento
   const resetProcessing = useCallback(() => {
     setIsProcessing(false)

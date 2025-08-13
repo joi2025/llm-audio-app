@@ -4,7 +4,7 @@ from flask import Flask
 from flask_socketio import SocketIO
 from flask_cors import CORS
 from app.api.websocket_unified import init_unified
-from app.api.admin_routes import admin_bp
+from app.api.routes.admin import admin_bp
 
 def create_app():
     app = Flask(__name__)

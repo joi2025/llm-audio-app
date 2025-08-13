@@ -6,13 +6,13 @@ import ConversationHistory from './components/ConversationHistory'
 import LogsPanel from './components/LogsPanel'
 const AdminPanel = React.lazy(() => import('./components/AdminPanel'))
 import VoiceCircle from './pages/VoiceCircle'
-import VoiceCircleV2 from './components/VoiceCircleV2'
+import VoiceCircleV2 from './components/VoiceCircleV2_Final'
 import { useConversation, useConversationActions } from './contexts/ConversationContext'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001'
 
 export default function App() {
-  const [mode, setMode] = useState('user') // 'user' | 'admin' | 'v2' | 'v2-auto'
+  const [mode, setMode] = useState('v2-auto') // 'user' | 'admin' | 'v2' | 'v2-auto' - TESTING: admin para probar God Mode Dashboard
   const [connected, setConnected] = useState(false)
   const [logs, setLogs] = useState([])
   const [audioUrl, setAudioUrl] = useState(null)
