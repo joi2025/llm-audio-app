@@ -7,12 +7,14 @@ import LogsPanel from './components/LogsPanel'
 const AdminPanel = React.lazy(() => import('./components/AdminPanel'))
 import VoiceCircle from './pages/VoiceCircle'
 import VoiceCircleV2 from './components/VoiceCircleV2_Final'
+import MinimalAssistant from './components/MinimalAssistant'
+const AdminPro = React.lazy(() => import('./components/AdminPro'))
 import { useConversation, useConversationActions } from './contexts/ConversationContext'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001'
 
 export default function App() {
-  const [mode, setMode] = useState('v2-auto') // 'user' | 'admin' | 'v2' | 'v2-auto' - TESTING: admin para probar God Mode Dashboard
+  const [mode, setMode] = useState('minimal') // 'minimal' | 'user' | 'admin' | 'v2' | 'v2-auto'
   const [connected, setConnected] = useState(false)
   const [logs, setLogs] = useState([])
   const [audioUrl, setAudioUrl] = useState(null)
@@ -124,26 +126,33 @@ export default function App() {
         </div>
       </header>
 
-      <section className="controls" style={{ justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={connected ? disconnect : connect}>
-          {connected ? 'Desconectar' : 'Conectar'}
-        </button>
-        <button onClick={clearAll}>Limpiar</button>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setMode('user')} disabled={mode==='user'}>Usuario</button>
-          <button onClick={() => setMode('v2')} disabled={mode==='v2'}>v2 Voz</button>
-          <button onClick={() => setMode('v2-auto')} disabled={mode==='v2-auto'} style={{
-            background: mode === 'v2-auto' ? 'linear-gradient(135deg, #10b981, #059669)' : '',
-            color: mode === 'v2-auto' ? 'white' : '',
-            fontWeight: mode === 'v2-auto' ? 'bold' : 'normal'
-          }}>🤖 v2 Auto</button>
-          <button onClick={() => setMode('admin')} disabled={mode==='admin'}>Admin</button>
-        </div>
-      </section>
+      {/* Minimal: ocultamos controles; si se necesita, se puede habilitar un menú compacto */}
+      {mode !== 'minimal' && (
+        <section className="controls" style={{ justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={connected ? disconnect : connect}>
+              {connected ? 'Desconectar' : 'Conectar'}
+            </button>
+            <button onClick={clearAll}>Limpiar</button>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => setMode('minimal')} disabled={mode==='minimal'}>Minimal</button>
+            <button onClick={() => setMode('user')} disabled={mode==='user'}>Usuario</button>
+            <button onClick={() => setMode('v2')} disabled={mode==='v2'}>v2 Voz</button>
+            <button onClick={() => setMode('v2-auto')} disabled={mode==='v2-auto'} style={{
+              background: mode === 'v2-auto' ? 'linear-gradient(135deg, #10b981, #059669)' : '',
+              color: mode === 'v2-auto' ? 'white' : '',
+              fontWeight: mode === 'v2-auto' ? 'bold' : 'normal'
+            }}>🤖 v2 Auto</button>
+            <button onClick={() => setMode('admin')} disabled={mode==='admin'}>Admin</button>
+            <button onClick={() => setMode('admin-pro')} disabled={mode==='admin-pro'}>Admin Pro</button>
+          </div>
+        </section>
+      )}
 
-      {mode === 'user' ? (
+      {mode === 'minimal' ? (
+        <MinimalAssistant wsUrl={BACKEND_URL} />
+      ) : mode === 'user' ? (
         <>
           <section className="recorder">
             <AudioRecorder
@@ -183,6 +192,10 @@ export default function App() {
         <VoiceCircleV2 wsUrl={BACKEND_URL} autoMode={true} />
       ) : mode === 'v2' ? (
         <VoiceCircleV2 wsUrl={BACKEND_URL} />
+      ) : mode === 'admin-pro' ? (
+        <Suspense fallback={<div style={{ padding: 20, color: '#94a3b8' }}>Cargando Admin Pro...</div>}> 
+          <AdminPro wsUrl={BACKEND_URL} />
+        </Suspense>
       ) : (
         <VoiceCircle wsUrl={BACKEND_URL} />
       )}
