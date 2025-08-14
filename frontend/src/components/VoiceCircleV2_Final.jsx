@@ -4,20 +4,85 @@
  * Interfaz minimalista + Avatar dinámico + Pipeline latencia cero
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import useSocketIO from '../hooks/useSocketIO'
+import useAutoVoice from '../hooks/useAutoVoice'
+import usePersonality from '../hooks/usePersonality'
+import { PERSONALITIES as PERSONALITIES_MAP } from '../data/personalities'
 
-// Importaciones simplificadas para evitar errores
-const PERSONALITIES = [
-  { id: 'default', name: 'Asistente', color: '#60a5fa', voice: 'alloy' }
-]
-
-export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMode = false }) {
-  const [isListening, setIsListening] = useState(false)
-  const [isProcessing, setIsProcessing] = useState(false)
+export default function VoiceCircleV2({ wsUrl = (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8001'), autoMode = false }) {
   const [assistantSpeaking, setAssistantSpeaking] = useState(false)
   const [showPersonalities, setShowPersonalities] = useState(false)
-  const [currentPersonality, setCurrentPersonality] = useState(PERSONALITIES[0])
   const [error, setError] = useState('')
-  const [isConnected, setIsConnected] = useState(false)
+
+  // Socket.IO real connection
+  const { isConnected, emit, addListener, removeAllListeners } = useSocketIO(wsUrl, { autoConnect: true })
+
+  // Personalities
+  const { personalityData, applyPersonality, isPersonalityActive } = usePersonality()
+  const currentPersonality = personalityData || { key: 'default', name: 'Asistente', color: '#60a5fa', voice: 'alloy', emoji: '🤖' }
+
+  // Single audio element for chunked playback
+  const audioRef = useRef(null)
+  const ensureAudio = useCallback(() => {
+    if (!audioRef.current) {
+      audioRef.current = new Audio()
+    }
+    return audioRef.current
+  }, [])
+
+  const playB64 = useCallback((b64) => {
+    try {
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0))
+      const blob = new Blob([bytes], { type: 'audio/mpeg' })
+      const url = URL.createObjectURL(blob)
+      const a = ensureAudio()
+      a.src = url
+      a.onended = () => {
+        URL.revokeObjectURL(url)
+      }
+      a.play().catch(() => {})
+    } catch (e) {
+      console.warn('Audio decode/play error', e)
+    }
+  }, [ensureAudio])
+
+  const stopAudio = useCallback(() => {
+    try {
+      const a = ensureAudio()
+      a.pause()
+      a.currentTime = 0
+    } catch {}
+  }, [ensureAudio])
+
+  // Auto voice capture wired to backend
+  const {
+    isListening,
+    isProcessing,
+    manualStart,
+    manualStop,
+    resetProcessing,
+    voiceState,
+  } = useAutoVoice({
+    onAudioChunk: useCallback((b64) => {
+      // Stream chunks as raw base64 for backend tolerance
+      emit('audio_chunk', { data: b64 })
+    }, [emit]),
+    onAudioCapture: useCallback((_finalB64) => {
+      // End of user turn; backend should process accumulated chunks
+      emit('audio_end')
+    }, [emit]),
+    onSilenceDetected: useCallback(() => {
+      // Additional hook if needed
+    }, []),
+    onSpeechStart: useCallback(() => {
+      // Cancel any ongoing TTS immediately
+      stopAudio()
+      setAssistantSpeaking(false)
+      emit('stop_tts')
+    }, [emit, stopAudio]),
+    isAssistantSpeaking: assistantSpeaking,
+    enabled: !!autoMode,
+  })
 
   // Estados del avatar dinámico
   const getAvatarState = () => {
@@ -65,9 +130,9 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
           overflow: 'hidden'
         }}
         onClick={() => {
-          if (autoMode) {
-            // Toggle listening in auto mode
-            setIsListening(!isListening)
+          if (!autoMode) {
+            // Manual mode: toggle capture
+            if (isListening) manualStop(); else manualStart()
           }
         }}
       >
@@ -156,11 +221,11 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
           border: '1px solid rgba(75, 85, 99, 0.3)',
           minWidth: '200px'
         }}>
-          {PERSONALITIES.map(p => (
+          {Object.entries(PERSONALITIES_MAP).map(([key, p]) => (
             <div
-              key={p.id}
+              key={key}
               onClick={() => {
-                setCurrentPersonality(p)
+                applyPersonality(key)
                 setShowPersonalities(false)
               }}
               style={{
@@ -168,8 +233,8 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
                 borderRadius: '8px',
                 cursor: 'pointer',
                 color: p.color,
-                background: currentPersonality.id === p.id ? `${p.color}20` : 'transparent',
-                border: currentPersonality.id === p.id ? `1px solid ${p.color}40` : '1px solid transparent',
+                background: currentPersonality.key === key ? `${p.color}20` : 'transparent',
+                border: currentPersonality.key === key ? `1px solid ${p.color}40` : '1px solid transparent',
                 marginBottom: '5px',
                 transition: 'all 0.2s ease'
               }}
@@ -205,16 +270,51 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
     )
   }
 
-  // Efecto de conexión
+  // Socket listeners for streaming events
   useEffect(() => {
-    // Simular conexión
-    const timer = setTimeout(() => {
-      setIsConnected(true)
-      setError('')
-    }, 1000)
-    
-    return () => clearTimeout(timer)
-  }, [])
+    const cleanups = []
+    cleanups.push(addListener('audio', (payload) => {
+      const b64 = payload?.audio_b64 || payload?.audio || payload?.data
+      if (b64) {
+        setAssistantSpeaking(true)
+        playB64(b64)
+      }
+    }))
+    // Streamed TTS chunks from backend (websocket_unified emits 'audio_chunk')
+    cleanups.push(addListener('audio_chunk', (payload) => {
+      const b64 = payload?.audio_b64 || payload?.audio || payload?.data
+      if (b64) {
+        setAssistantSpeaking(true)
+        playB64(b64)
+      }
+    }))
+    cleanups.push(addListener('tts_end', () => {
+      setAssistantSpeaking(false)
+      stopAudio()
+      resetProcessing()
+    }))
+    // Immediate cancellation acknowledgement from backend
+    cleanups.push(addListener('tts_cancelled', () => {
+      setAssistantSpeaking(false)
+      stopAudio()
+      resetProcessing()
+    }))
+    cleanups.push(addListener('stop_tts', () => {
+      setAssistantSpeaking(false)
+      stopAudio()
+    }))
+    cleanups.push(addListener('error', (e) => {
+      setError(typeof e === 'string' ? e : (e?.message || 'Error'))
+    }))
+    // LLM first token could switch to speaking/processing states if needed
+    cleanups.push(addListener('result_llm', () => {
+      // When we get LLM content, consider we are processing/speaking soon
+    }))
+    return () => {
+      try { cleanups.forEach(fn => fn && fn()) } catch {}
+      removeAllListeners()
+    }
+  }, [addListener, removeAllListeners, playB64, stopAudio, resetProcessing])
 
   return (
     <div style={{
@@ -285,7 +385,7 @@ export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001', autoMod
       {renderStatusIndicator()}
 
       {/* Estilos CSS en JS para animaciones */}
-      <style jsx>{`
+      <style>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: 0.7; transform: scale(1.05); }

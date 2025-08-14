@@ -53,7 +53,7 @@ export default function useAutoVoice({
     // Optimización de recursos para tiempo real
     sampleRate: 16000,           // Calidad suficiente para STT
     bufferSize: 1024,            // Buffer MÁS pequeño para menor latencia
-    streaming: false,            // Emisión final única para estabilidad
+    streaming: true,             // Stream de chunks + cierre en silencio
   }
 
   // Hook de VAD con configuración optimizada
@@ -85,28 +85,27 @@ export default function useAutoVoice({
     onSilenceEnd: useCallback(() => {
       if (speechDetectedRef.current) {
         console.log('🤫 [AutoVoice] Silencio detectado - ENVIANDO AUDIO INMEDIATAMENTE')
+        // Notificar al consumidor y disparar cierre de turno (audio_end)
         onSilenceDetected?.()
+        onAudioCapture?.(null)
         // Cooldown MÁS corto para conversación más fluida
         cooldownUntilRef.current = Date.now() + 400 // Reducido de 700ms a 400ms
         // Marcar fin de turno
         speechDetectedRef.current = false
         hadSpeechThisTurnRef.current = false
       }
-    }, [onSilenceDetected]),
+    }, [onSilenceDetected, onAudioCapture]),
 
     onLevel: useCallback((level) => {
       setAudioLevel(level || 0)
     }, []),
 
     // Mapeo de umbrales AGRESIVOS a la API de useMicVAD
-    rmsThreshold: 0.008,         // MÁS sensible que 0.01 para detección instantánea
-    maxSilenceMs: vadConfig.maxSilenceDuration,
-    minSpeechMs: vadConfig.minSpeechDuration,
-    rmsThreshold: 0.01, // umbral base para considerar voz en español
+    rmsThreshold: 0.01, // umbral base para considerar voz en español (threshold dinámico ajusta encima de ambiente)
     minVoiceMs: vadConfig.minSpeechDuration,
     maxSilenceMs: vadConfig.maxSilenceDuration,
     chunkMs: 200,
-    streaming: true // stream de chunks + fin en silencio
+    streaming: true // stream de chunks + cierre en silencio
   })
 
   // Detección automática de inicio de habla
