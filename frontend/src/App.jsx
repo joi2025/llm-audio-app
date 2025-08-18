@@ -1,17 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react'
-import useSocketIO from './hooks/useSocketIO'
+import useCapacitorWebSocket from './hooks/useCapacitorWebSocket'
 import AudioRecorder from './components/AudioRecorder'
 import AudioPlayer from './components/AudioPlayer'
 import ConversationHistory from './components/ConversationHistory'
 import LogsPanel from './components/LogsPanel'
 const AdminPanel = React.lazy(() => import('./components/AdminPanel'))
 import VoiceCircle from './pages/VoiceCircle'
-import VoiceCircleV2 from './components/VoiceCircleV2_Final'
+import VoiceCircleV2 from './components/VoiceCircleV2'
 import MinimalAssistant from './components/MinimalAssistant'
 const AdminPro = React.lazy(() => import('./components/AdminPro'))
 import { useConversation, useConversationActions } from './contexts/ConversationContext'
+import './mobile-optimized.css'
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001'
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://9c11d44a64e8.ngrok-free.app'
 
 export default function App() {
   const [mode, setMode] = useState('minimal') // 'minimal' | 'user' | 'admin' | 'v2' | 'v2-auto'
@@ -66,13 +67,26 @@ export default function App() {
     }
   }, [addLog, appendUser, appendAssistant])
 
-  const { connect, disconnect, emit, isConnected } = useSocketIO(BACKEND_URL, {
+  const [currentBackendUrl, setCurrentBackendUrl] = useState(BACKEND_URL)
+  const wsUrl = useMemo(() =>
+    (currentBackendUrl || '').replace('https://', 'wss://').replace('http://', 'ws://')
+  , [currentBackendUrl])
+
+  const { connect, disconnect, emit, isConnected } = useCapacitorWebSocket(wsUrl, {
     autoConnect: true,
-    onConnect: () => { setConnected(true); addLog('Socket.IO: connected') },
-    onDisconnect: () => { setConnected(false); addLog('Socket.IO: disconnected') },
-    onError: (e) => addLog(`Socket.IO error: ${e?.message || e}`),
+    onConnect: () => { setConnected(true); addLog('Capacitor WebSocket: connected') },
+    onDisconnect: () => { setConnected(false); addLog('Capacitor WebSocket: disconnected') },
+    onError: (e) => addLog(`Capacitor WebSocket error: ${e?.message || e}`),
     onMessage,
   })
+
+  const handleServerChange = (serverConfig) => {
+    setCurrentBackendUrl(serverConfig.httpUrl)
+    addLog(`Servidor cambiado a: ${serverConfig.mode} - ${serverConfig.httpUrl}`)
+    // Reconectar con nueva URL
+    disconnect()
+    setTimeout(() => connect(), 1000)
+  }
 
   // Simple wrapper used by AudioRecorder callbacks
   const sendJson = useCallback((payload) => {
@@ -119,89 +133,172 @@ export default function App() {
   return (
     <div className="container">
       <header>
-        <h1>LLM Audio App</h1>
+        <h1>🎙️ LLM Audio App</h1>
         <div className="status">
           <span className={connected ? 'dot green' : 'dot red'} />
           {connected ? 'Conectado' : 'Desconectado'}
         </div>
       </header>
 
-      {/* Minimal: ocultamos controles; si se necesita, se puede habilitar un menú compacto */}
-      {mode !== 'minimal' && (
-        <section className="controls" style={{ justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={connected ? disconnect : connect}>
-              {connected ? 'Desconectar' : 'Conectar'}
-            </button>
-            <button onClick={clearAll}>Limpiar</button>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setMode('minimal')} disabled={mode==='minimal'}>Minimal</button>
-            <button onClick={() => setMode('user')} disabled={mode==='user'}>Usuario</button>
-            <button onClick={() => setMode('v2')} disabled={mode==='v2'}>v2 Voz</button>
-            <button onClick={() => setMode('v2-auto')} disabled={mode==='v2-auto'} style={{
-              background: mode === 'v2-auto' ? 'linear-gradient(135deg, #10b981, #059669)' : '',
-              color: mode === 'v2-auto' ? 'white' : '',
-              fontWeight: mode === 'v2-auto' ? 'bold' : 'normal'
-            }}>🤖 v2 Auto</button>
-            <button onClick={() => setMode('admin')} disabled={mode==='admin'}>Admin</button>
-            <button onClick={() => setMode('admin-pro')} disabled={mode==='admin-pro'}>Admin Pro</button>
-          </div>
-        </section>
-      )}
-
-      {mode === 'minimal' ? (
-        <MinimalAssistant wsUrl={BACKEND_URL} />
-      ) : mode === 'user' ? (
-        <>
-          <section className="recorder">
-            <AudioRecorder
-              disabled={!connected}
-              onChunk={(base64) => sendJson({ type: 'audio_chunk', data: base64 })}
-              onStop={() => sendJson({ type: 'audio_end' })}
-              addLog={addLog}
-            />
-          </section>
-
-          <section className="composer">
-            <input
-              type="text"
-              placeholder="Escribe y envía al asistente"
-              value={pendingText}
-              onChange={(e) => setPendingText(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSendText()}
-            />
-            <button onClick={handleSendText} disabled={!connected}>Enviar</button>
-          </section>
-
-          <section className="content">
-            <div className="left">
-              <ConversationHistory messages={messages} />
+      {/* Mobile-First Navigation */}
+      <div className="mobile-nav">
+          <div className="nav-section">
+            <h3>Controles</h3>
+            <div className="mobile-controls">
+              <div className="control-group">
+                <button 
+                  className={`mobile-button ${connected ? 'danger' : 'primary'}`}
+                  onClick={connected ? disconnect : connect}
+                >
+                  {connected ? '🔌 Desconectar' : '🔗 Conectar'}
+                </button>
+                <button className="mobile-button" onClick={clearAll}>
+                  🗑️ Limpiar
+                </button>
+              </div>
             </div>
-            <div className="right">
+          </div>
+          
+          <div className="nav-section">
+            <h3>Modos de Interfaz</h3>
+            <div className="nav-buttons">
+              <button 
+                className={`nav-button ${mode === 'minimal' ? 'active' : ''}`}
+                onClick={() => setMode('minimal')}
+              >
+                ✨ Minimal
+              </button>
+              <button 
+                className={`nav-button ${mode === 'user' ? 'active' : ''}`}
+                onClick={() => setMode('user')}
+              >
+                👤 Usuario
+              </button>
+              <button 
+                className={`nav-button ${mode === 'v2' ? 'active' : ''}`}
+                onClick={() => setMode('v2')}
+              >
+                🎤 v2 Voz
+              </button>
+              <button 
+                className={`nav-button ${mode === 'v2-auto' ? 'active' : ''}`}
+                onClick={() => setMode('v2-auto')}
+              >
+                🤖 v2 Auto
+              </button>
+            </div>
+          </div>
+          
+          <div className="nav-section">
+            <h3>Administración</h3>
+            <div className="nav-buttons">
+              <button 
+                className={`nav-button ${mode === 'admin' ? 'active' : ''}`}
+                onClick={() => setMode('admin')}
+              >
+                ⚙️ Admin
+              </button>
+              <button 
+                className={`nav-button ${mode === 'admin-pro' ? 'active' : ''}`}
+                onClick={() => setMode('admin-pro')}
+              >
+                🌐 Admin Pro
+              </button>
+            </div>
+          </div>
+        </div>
+
+      <div className="mobile-content">
+        {mode === 'minimal' ? (
+          <div className="content-section animate-fade-in">
+            <div className="section-header">
+              <h2 className="section-title">✨ Asistente Minimal</h2>
+              <span className="section-badge">Activo</span>
+            </div>
+            <MinimalAssistant wsUrl={wsUrl} />
+          </div>
+        ) : mode === 'user' ? (
+          <>
+            <div className="content-section">
+              <div className="section-header">
+                <h2 className="section-title">💬 Conversación</h2>
+                <span className="section-badge">Usuario</span>
+              </div>
+              <div className="mobile-form">
+                <div className="form-group">
+                  <input
+                    className="form-input"
+                    type="text"
+                    placeholder="Escribe tu mensaje..."
+                    value={pendingText}
+                    onChange={(e) => setPendingText(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendText()}
+                  />
+                  <button className="mobile-button primary full-width" onClick={handleSendText}>
+                    📤 Enviar Mensaje
+                  </button>
+                </div>
+              </div>
+              <ConversationHistory />
+            </div>
+            <div className="content-section">
+              <div className="section-header">
+                <h2 className="section-title">🎙️ Audio & Logs</h2>
+              </div>
+              <AudioRecorder onSend={sendJson} />
               <AudioPlayer src={audioUrl} onStop={stopAudio} />
               <LogsPanel logs={logs} />
             </div>
-          </section>
-        </>
-      ) : mode === 'admin' ? (
-        <Suspense fallback={<div style={{ padding: 20, color: '#94a3b8' }}>Cargando Admin...</div>}>
-          <AdminPanel />
-        </Suspense>
-      ) : mode === 'v2-auto' ? (
-        <VoiceCircleV2 wsUrl={BACKEND_URL} autoMode={true} />
-      ) : mode === 'v2' ? (
-        <VoiceCircleV2 wsUrl={BACKEND_URL} />
-      ) : mode === 'admin-pro' ? (
-        <Suspense fallback={<div style={{ padding: 20, color: '#94a3b8' }}>Cargando Admin Pro...</div>}> 
-          <AdminPro wsUrl={BACKEND_URL} />
-        </Suspense>
-      ) : (
-        <VoiceCircle wsUrl={BACKEND_URL} />
-      )}
+          </>
+        ) : mode === 'admin' ? (
+          <div className="content-section animate-fade-in">
+            <div className="section-header">
+              <h2 className="section-title">⚙️ Panel Admin</h2>
+              <span className="section-badge">Admin</span>
+            </div>
+            <Suspense fallback={<div className="text-center text-small">Cargando Admin...</div>}>
+              <AdminPanel />
+            </Suspense>
+          </div>
+        ) : mode === 'v2-auto' ? (
+          <div className="content-section animate-fade-in">
+            <div className="section-header">
+              <h2 className="section-title">🤖 Voz Automática</h2>
+              <span className="section-badge">Auto</span>
+            </div>
+            <VoiceCircleV2 wsUrl={wsUrl} autoMode={true} />
+          </div>
+        ) : mode === 'v2' ? (
+          <div className="content-section animate-fade-in">
+            <div className="section-header">
+              <h2 className="section-title">🎤 Control de Voz</h2>
+              <span className="section-badge">Manual</span>
+            </div>
+            <VoiceCircleV2 wsUrl={wsUrl} />
+          </div>
+        ) : mode === 'admin-pro' ? (
+          <div className="content-section animate-fade-in">
+            <div className="section-header">
+              <h2 className="section-title">🌐 Admin Pro</h2>
+              <span className="section-badge">Servidor</span>
+            </div>
+            <Suspense fallback={<div className="text-center text-small">Cargando Admin Pro...</div>}> 
+              <AdminPro wsUrl={currentBackendUrl} onServerChange={handleServerChange} />
+            </Suspense>
+          </div>
+        ) : (
+          <div className="content-section animate-fade-in">
+            <div className="section-header">
+              <h2 className="section-title">🎙️ Círculo de Voz</h2>
+              <span className="section-badge">Básico</span>
+            </div>
+            <VoiceCircle wsUrl={wsUrl} />
+          </div>
+        )}
+      </div>
 
       <footer>
-        <small>Backend: {BACKEND_URL}</small>
+        <small>Backend: {currentBackendUrl}</small>
       </footer>
     </div>
   )

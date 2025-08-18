@@ -1,16 +1,18 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import useSocketIO from '../hooks/useSocketIO'
 import useMetrics from '../hooks/useMetrics'
+import AdminServerConfig from './AdminServerConfig'
 
 /**
  * AdminPro
  * Advanced admin panel with real-time metrics, logs, and health monitoring.
  * Displays p50/p95/max latencies, event counters, and filterable logs.
  */
-export default function AdminPro({ wsUrl }) {
-  const [activeTab, setActiveTab] = useState('health')
+export default function AdminPro({ wsUrl, onServerChange }) {
+  const [activeTab, setActiveTab] = useState('server')
   const [logFilter, setLogFilter] = useState('')
   const [logLevel, setLogLevel] = useState('all')
+  const [currentServerUrl, setCurrentServerUrl] = useState(wsUrl)
   
   const { metrics, addLatency, incrementEvent, addLog, startTimer, endTimer, clearMetrics } = useMetrics()
   
@@ -48,6 +50,7 @@ export default function AdminPro({ wsUrl }) {
   })
 
   const sections = useMemo(() => ([
+    { id: 'server', title: '🌐 Servidor' },
     { id: 'health', title: 'Salud' },
     { id: 'latency', title: 'Latencia' },
     { id: 'pipeline', title: 'Pipeline' },
@@ -221,14 +224,32 @@ export default function AdminPro({ wsUrl }) {
     </div>
   )
 
+  const handleServerChange = (serverConfig) => {
+    setCurrentServerUrl(serverConfig.wsUrl)
+    if (onServerChange) {
+      onServerChange(serverConfig)
+    }
+    addLog('info', 'admin', `Servidor cambiado a: ${serverConfig.mode} - ${serverConfig.httpUrl}`)
+  }
+
+  const renderServerTab = () => (
+    <div style={{ padding: 16 }}>
+      <AdminServerConfig 
+        onServerChange={handleServerChange}
+        currentServer={currentServerUrl}
+      />
+    </div>
+  )
+
   const renderTabContent = () => {
     switch (activeTab) {
+      case 'server': return renderServerTab()
       case 'health': return renderHealthTab()
       case 'latency': return renderLatencyTab()
       case 'pipeline': return renderPipelineTab()
       case 'logs': return renderLogsTab()
       case 'device': return renderDeviceTab()
-      default: return renderHealthTab()
+      default: return renderServerTab()
     }
   }
 

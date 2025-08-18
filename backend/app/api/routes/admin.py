@@ -193,3 +193,8 @@ def restart_system():
         }, "System configuration restarted successfully")
     except Exception as e:
         return error(f"Error restarting system: {str(e)}", code='restart_error', status=500)
+
+@admin_bp.route('/api/admin/system/restart', methods=['POST'])
+def restart_system_compat():
+    """Compat alias for legacy path used by frontend AdminAPI.restart()"""
+    return restart_system()

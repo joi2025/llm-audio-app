@@ -1,3 +1,23 @@
+## 2.0.0 - 2025-08-18 - Android Nativo + Documentación
+
+### Added
+- Módulo Android nativo `android-elite` (Kotlin + Jetpack Compose + MVVM + Coroutines).
+- `OpenAiService.kt` con endpoints STT, LLM streaming (SSE) y TTS.
+- `VoicePipelineViewModel.kt` con orquestación Record → STT → LLM → TTS → Play, interrupción inmediata.
+- VAD nativo (`VoiceActivityDetector.kt`) y reproducción streaming (`AudioPlayer.kt`).
+- UI Compose: `VoiceAvatar.kt` (animado), `MainScreen.kt`, `MainActivity.kt`, theming `Theme.kt`.
+- Hilt DI (`AppModule.kt`) y `LLMAudioApplication.kt`.
+- Seguridad: `EncryptedSharedPreferences` para API key.
+- Recursos Android: `res/values/strings.xml`, `res/values/themes.xml`.
+- Documentación: `android-elite/README.md`, `android-elite/TESTING_PLAN.md`, `docs/android/overview-native.md`, `docs/networking-public.md`, `docs/README.md`.
+
+### Changed
+- `docs/backend-test-plan.md`: agregado "Remote Connectivity Tests" con guía de exposición pública.
+- Índice de documentación central en `docs/README.md`.
+
+### Notes
+- Próximas fases: AdminPro nativo con métricas en tiempo real; optimizaciones (Proguard, ML Kit).
+
 ## 1.9.1 - 2025-08-13
 
 ### Added

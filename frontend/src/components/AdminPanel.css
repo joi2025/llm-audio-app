@@ -1,0 +1,217 @@
+/* AdminPanel.css - Estilos para panel administrativo */
+
+.admin-section {
+  background: #1e293b;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 16px;
+  border: 1px solid #334155;
+}
+
+.admin-section h3 {
+  margin: 0 0 16px 0;
+  color: #f1f5f9;
+  font-size: 1.2em;
+  border-bottom: 1px solid #334155;
+  padding-bottom: 8px;
+}
+
+.admin-section h4 {
+  margin: 16px 0 8px 0;
+  color: #cbd5e1;
+  font-size: 1em;
+}
+
+.server-status {
+  margin-bottom: 20px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.status-indicator {
+  font-weight: bold;
+  font-size: 0.9em;
+}
+
+.btn-small {
+  background: #475569;
+  color: white;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8em;
+  transition: background-color 0.2s;
+}
+
+.btn-small:hover {
+  background: #64748b;
+}
+
+.server-mode-selector {
+  margin-bottom: 20px;
+}
+
+.radio-option {
+  display: block;
+  margin: 8px 0;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.radio-option:hover {
+  background: #334155;
+}
+
+.radio-option input[type="radio"] {
+  margin-right: 8px;
+}
+
+.config-section {
+  margin-bottom: 16px;
+}
+
+.config-section label {
+  display: block;
+  margin-bottom: 4px;
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
+.config-section input[type="text"] {
+  width: 100%;
+  padding: 8px 12px;
+  background: #0f172a;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  color: white;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+.config-section input[type="text"]:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.config-section small {
+  display: block;
+  margin-top: 4px;
+  color: #94a3b8;
+  font-size: 0.8em;
+}
+
+.url-preview {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.url-item {
+  margin: 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.url-item strong {
+  color: #cbd5e1;
+  min-width: 80px;
+}
+
+.url-item code {
+  background: #1e293b;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.8em;
+  color: #10b981;
+  border: 1px solid #334155;
+  flex: 1;
+  word-break: break-all;
+}
+
+.connection-test {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.btn-test {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: background-color 0.2s;
+}
+
+.btn-test:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.btn-test:disabled {
+  background: #475569;
+  cursor: not-allowed;
+}
+
+.test-result {
+  font-weight: 500;
+  font-size: 0.9em;
+}
+
+.apply-config {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.btn-primary {
+  background: #10b981;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1em;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.btn-primary:hover {
+  background: #059669;
+}
+
+.server-info {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  padding: 12px;
+}
+
+.server-info ul {
+  margin: 8px 0 0 0;
+  padding-left: 20px;
+}
+
+.server-info li {
+  margin: 4px 0;
+  color: #94a3b8;
+  font-size: 0.9em;
+}
+
+.server-info strong {
+  color: #cbd5e1;
+}

@@ -1,0 +1,499 @@
+/* Mobile-First Optimized CSS for Android */
+:root {
+  --bg: #0f172a;
+  --surface: #111827;
+  --text: #e5e7eb;
+  --muted: #94a3b8;
+  --primary: #22d3ee;
+  --accent: #a78bfa;
+  --danger: #ef4444;
+  --ok: #10b981;
+  --persona: var(--primary);
+  --surface-2: #0b1324;
+  --ring: #23314e;
+  --glass: rgba(15, 23, 42, 0.55);
+  
+  /* Mobile-specific variables */
+  --mobile-padding: 12px;
+  --mobile-gap: 8px;
+  --touch-target: 44px;
+  --mobile-font: 16px;
+}
+
+* { 
+  box-sizing: border-box; 
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body, #root { 
+  height: 100%; 
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background: linear-gradient(180deg, #0b1220, #0a0f1a);
+  color: var(--text);
+  font-size: var(--mobile-font);
+  line-height: 1.5;
+}
+
+/* ============ MOBILE CONTAINER ============ */
+.container {
+  width: 100%;
+  min-height: 100vh;
+  padding: var(--mobile-padding);
+  display: flex;
+  flex-direction: column;
+  gap: var(--mobile-gap);
+}
+
+/* ============ MOBILE HEADER ============ */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--ring);
+  margin-bottom: var(--mobile-gap);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 100;
+}
+
+header h1 {
+  font-size: 18px;
+  margin: 0;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot.green { background: var(--ok); }
+.dot.red { background: var(--danger); }
+
+/* ============ MOBILE NAVIGATION ============ */
+.mobile-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mobile-gap);
+  margin-bottom: 16px;
+}
+
+.nav-section {
+  background: var(--surface-2);
+  border: 1px solid var(--ring);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.nav-section h3 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.nav-buttons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.nav-button {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--ring);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-height: var(--touch-target);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.nav-button:hover {
+  background: var(--primary);
+  color: var(--bg);
+  transform: translateY(-1px);
+}
+
+.nav-button:active {
+  transform: translateY(0);
+}
+
+.nav-button.active {
+  background: var(--primary);
+  color: var(--bg);
+  border-color: var(--primary);
+  font-weight: 600;
+}
+
+.nav-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ============ MOBILE CONTROLS ============ */
+.mobile-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mobile-gap);
+  margin-bottom: 16px;
+}
+
+.control-group {
+  display: flex;
+  gap: var(--mobile-gap);
+  flex: 1;
+  min-width: 0;
+}
+
+.mobile-button {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--ring);
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-height: var(--touch-target);
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.mobile-button:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.mobile-button:active {
+  transform: scale(0.98);
+}
+
+.mobile-button.primary {
+  background: var(--primary);
+  color: var(--bg);
+  border-color: var(--primary);
+}
+
+.mobile-button.danger {
+  background: var(--danger);
+  color: white;
+  border-color: var(--danger);
+}
+
+/* ============ MOBILE CONTENT ============ */
+.mobile-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.content-section {
+  background: var(--surface-2);
+  border: 1px solid var(--ring);
+  border-radius: 12px;
+  padding: 16px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ring);
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+.section-badge {
+  background: var(--primary);
+  color: var(--bg);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ============ MOBILE FORMS ============ */
+.mobile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.form-input {
+  background: var(--surface);
+  border: 1px solid var(--ring);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 16px;
+  color: var(--text);
+  min-height: var(--touch-target);
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.2);
+}
+
+/* ============ MOBILE LISTS ============ */
+.mobile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.list-item {
+  background: var(--surface);
+  border: 1px solid var(--ring);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--touch-target);
+}
+
+.list-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-item-title {
+  font-weight: 500;
+  color: var(--text);
+  margin: 0 0 4px 0;
+}
+
+.list-item-subtitle {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.list-item-action {
+  background: var(--primary);
+  color: var(--bg);
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  min-height: 32px;
+}
+
+/* ============ MOBILE TABS ============ */
+.mobile-tabs {
+  display: flex;
+  background: var(--surface);
+  border: 1px solid var(--ring);
+  border-radius: 8px;
+  padding: 4px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+
+.mobile-tab {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  min-height: 36px;
+  flex-shrink: 0;
+}
+
+.mobile-tab.active {
+  background: var(--primary);
+  color: var(--bg);
+}
+
+.mobile-tab:hover:not(.active) {
+  background: var(--ring);
+  color: var(--text);
+}
+
+/* ============ MOBILE UTILITIES ============ */
+.mobile-hidden {
+  display: none !important;
+}
+
+.mobile-only {
+  display: block;
+}
+
+.desktop-only {
+  display: none;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-small {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.mt-auto {
+  margin-top: auto;
+}
+
+.full-width {
+  width: 100%;
+}
+
+/* ============ MOBILE RESPONSIVE ============ */
+@media (max-width: 480px) {
+  :root {
+    --mobile-padding: 8px;
+    --mobile-gap: 6px;
+    --mobile-font: 14px;
+  }
+  
+  .nav-buttons {
+    grid-template-columns: 1fr 1fr;
+  }
+  
+  .mobile-controls {
+    flex-direction: column;
+  }
+  
+  .control-group {
+    flex-direction: column;
+  }
+}
+
+@media (min-width: 768px) {
+  .mobile-only {
+    display: none;
+  }
+  
+  .desktop-only {
+    display: block;
+  }
+  
+  .container {
+    max-width: 768px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+  
+  .mobile-content {
+    flex-direction: row;
+    gap: 24px;
+  }
+  
+  .content-section {
+    flex: 1;
+  }
+}
+
+/* ============ ANIMATIONS ============ */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* ============ ACCESSIBILITY ============ */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Focus styles for keyboard navigation */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  :root {
+    --bg: #000000;
+    --surface: #1a1a1a;
+    --text: #ffffff;
+    --ring: #666666;
+  }
+}

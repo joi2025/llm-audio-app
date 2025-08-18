@@ -36,9 +36,9 @@ def create_app():
     app.register_blueprint(chat_bp, url_prefix="/api")
     app.register_blueprint(tts_bp, url_prefix="/api")
 
-    # Register unified admin routes (consolidated)
-    from .api.routes.admin import admin_v2_bp
-    app.register_blueprint(admin_v2_bp, url_prefix="/api/v2")
+    # Register unified admin routes (consolidated, canonical)
+    from .api.routes.admin import admin_bp
+    app.register_blueprint(admin_bp)
 
     # Register new modular API (v2) under /api/v2
     register_api(app)

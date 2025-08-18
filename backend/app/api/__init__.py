@@ -5,11 +5,7 @@ def register_api(app):
 
     Mounts under /api/v2/... so older endpoints continue working.
     """
-    from .routes.admin import admin_v2_bp
-
-    # Wrap in a parent blueprint with url_prefix for v2
+    # Placeholder v2 blueprint. Admin routes are registered via `admin_bp` in app factory.
+    # Keep this for future modular APIs under /api/v2 without double-registering admin.
     v2 = Blueprint('api_v2', __name__)
-    # Register child blueprint under same prefix for clarity
-    app.register_blueprint(admin_v2_bp, url_prefix='/api/v2')
-
     return v2

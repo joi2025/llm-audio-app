@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LLM Audio App</string>
+    <string name="permission_audio_rationale">Esta app necesita acceso al micrófono para funcionar como asistente de voz.</string>
+    <string name="permission_denied">Sin permisos de micrófono, la app no puede funcionar correctamente.</string>
+    <string name="connecting">Conectando...</string>
+    <string name="connected">Conectado</string>
+    <string name="disconnected">Desconectado</string>
+    <string name="listening">Escuchando...</string>
+    <string name="processing">Procesando...</string>
+    <string name="speaking">Hablando...</string>
+    <string name="ready">Listo para conversar</string>
+    <string name="reconnect">Reconectar</string>
+    <string name="admin_mode">Modo Admin</string>
+</resources>

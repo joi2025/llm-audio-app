@@ -1,5 +1,5 @@
 import React from 'react'
-import VoiceCircleV2 from './VoiceCircleV2_Final'
+import VoiceCircleV2 from './VoiceCircleV2'
 
 /**
  * MinimalAssistant
