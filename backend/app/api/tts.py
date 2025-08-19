@@ -1,3 +1,7 @@
+"""Text-to-Speech (TTS) API routes.
+
+Wraps an OpenAI-compatible speech endpoint and returns audio/mp3 bytes.
+"""
 import base64
 import requests
 from flask import Blueprint, request, jsonify, current_app, Response
@@ -6,6 +10,7 @@ tts_bp = Blueprint('tts', __name__)
 
 
 def _headers(api_key):
+    """Authorization and JSON headers for OpenAI-compatible endpoints."""
     return {
         'Authorization': f'Bearer {api_key}',
         'Content-Type': 'application/json',
@@ -14,6 +19,11 @@ def _headers(api_key):
 
 @tts_bp.post('/tts')
 def tts_speak():
+    """Synthesize speech from text.
+
+    Body JSON: { text: string }
+    Uses configured model/voice and returns audio/mpeg bytes.
+    """
     cfg = current_app.config
     api_key = cfg.get('OPENAI_API_KEY', '')
     base_url = cfg.get('OPENAI_BASE_URL', 'https://api.openai.com/v1')
@@ -46,6 +56,7 @@ def tts_speak():
 
 
 def _safe_text(r):
+    """Safely extract response text for error payloads."""
     try:
         return r.text
     except Exception:

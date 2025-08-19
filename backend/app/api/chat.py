@@ -1,3 +1,8 @@
+"""Chat completions API routes.
+
+Provides a thin Flask route over the OpenAI-compatible Chat Completions API.
+Keeps logic minimal and returns a single assistant message text.
+"""
 import requests
 from flask import Blueprint, request, jsonify, current_app
 
@@ -5,6 +10,13 @@ chat_bp = Blueprint('chat', __name__)
 
 
 def _headers(api_key):
+    """Build authorization headers for OpenAI-compatible endpoints.
+
+    Args:
+        api_key (str): Secret API key.
+    Returns:
+        dict: Headers including Authorization and JSON content type.
+    """
     return {
         'Authorization': f'Bearer {api_key}',
         'Content-Type': 'application/json',
@@ -13,6 +25,15 @@ def _headers(api_key):
 
 @chat_bp.post('/chat')
 def chat_completion():
+    """Create a chat completion from either `text` or `messages`.
+
+    Body accepts:
+      - text: string (convenience shortcut)
+      - messages: list of {role, content}
+
+    Returns:
+      JSON { text: string } with assistant response or error 4xx/5xx.
+    """
     cfg = current_app.config
     api_key = cfg.get('OPENAI_API_KEY', '')
     base_url = cfg.get('OPENAI_BASE_URL', 'https://api.openai.com/v1')
@@ -51,6 +72,7 @@ def chat_completion():
 
 
 def _safe_text(r):
+    """Safely extract text from a requests.Response for logging/errors."""
     try:
         return r.text
     except Exception:

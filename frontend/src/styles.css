@@ -7,6 +7,11 @@
   --accent: #a78bfa;
   --danger: #ef4444;
   --ok: #10b981;
+  /* Dynamic personality accent (overridable via inline style on container) */
+  --persona: var(--primary);
+  --surface-2: #0b1324;
+  --ring: #23314e;
+  --glass: rgba(15, 23, 42, 0.55);
 }
 
 * { box-sizing: border-box; }
@@ -28,7 +33,7 @@ header h1 { font-size: 20px; margin: 0; font-weight: 600; }
 .controls { display: flex; gap: 8px; margin-bottom: 12px; }
 button {
   background: #1f2937; color: var(--text); border: 1px solid #374151; border-radius: 8px;
-  padding: 8px 12px; cursor: pointer; transition: transform .05s ease, background .2s;
+  padding: 8px 12px; cursor: pointer; transition: transform .05s ease, background .2s, box-shadow .2s, color .2s, border-color .2s;
 }
 button:hover { background: #243041; }
 button:active { transform: translateY(1px); }
@@ -72,3 +77,87 @@ footer { margin-top: 16px; color: var(--muted); }
   .admin-grid { grid-template-columns: 1fr; }
   .form-row { grid-template-columns: 1fr; }
 }
+
+/* ============ New UI helpers ============ */
+/* Fixed translucent header for app screens */
+.fixed-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+  background: linear-gradient(180deg, rgba(11, 18, 32, .8), rgba(11, 18, 32, .5));
+  border-bottom: 1px solid rgba(35, 49, 78, .6);
+}
+
+/* Health strip and pills */
+.health-strip { display: flex; gap: 10px; flex-wrap: wrap; }
+.pill {
+  background: rgba(0,0,0,0.2);
+  border: 1px solid rgba(75, 85, 99, 0.4);
+  color: var(--muted);
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: .85em;
+}
+
+/* Voice Circle V2 */
+.vcv2 { --persona: var(--primary); }
+.vcv2 .voice-circle {
+  width: 220px; height: 220px; border-radius: 9999px;
+  background: radial-gradient(circle, color-mix(in srgb, var(--persona) 35%, transparent) 0%, transparent 70%);
+  border: 3px solid var(--persona);
+  display: flex; align-items: center; justify-content: center; flex-direction: column;
+  cursor: pointer; transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+  box-shadow: 0 0 18px color-mix(in srgb, var(--persona) 40%, transparent);
+}
+.vcv2 .voice-circle.listening {
+  transform: scale(1.08);
+  box-shadow: 0 0 34px color-mix(in srgb, var(--persona) 65%, transparent);
+}
+.vcv2 .voice-circle.processing {
+  animation: pulseRing 1.2s ease-in-out infinite;
+}
+@keyframes pulseRing {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--persona) 45%, transparent); }
+  70% { box-shadow: 0 0 0 12px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* Responsive circle size */
+@media (max-width: 480px) {
+  .vcv2 .voice-circle { width: 180px; height: 180px; }
+}
+
+/* Modal with blurred backdrop */
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px) saturate(110%);
+  -webkit-backdrop-filter: blur(6px) saturate(110%);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.modal-card {
+  background: #1e293b; border-radius: 16px; padding: 24px;
+  width: min(92vw, 820px); max-height: 80vh; overflow: auto;
+  border: 1px solid rgba(35, 49, 78, 0.6);
+}
+
+/* Tabs (Admin) */
+.tabs { display: flex; gap: 10px; flex-wrap: wrap; }
+.tab-btn {
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(75, 85, 99, 0.3);
+  color: var(--muted);
+  padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: 500;
+  transition: all .2s ease;
+}
+.tab-btn.active {
+  background: color-mix(in srgb, var(--persona) 25%, rgba(30, 41, 59, 0.5));
+  border-color: color-mix(in srgb, var(--persona) 45%, rgba(75,85,99,.3));
+  color: var(--text);
+}
+
+/* Utility */
+.sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }

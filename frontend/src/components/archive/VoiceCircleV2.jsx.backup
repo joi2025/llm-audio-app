@@ -1,0 +1,833 @@
+import React, { useState, useEffect, useRef } from 'react'
+import usePersonality from '../hooks/usePersonality'
+import useSocketIO from '../hooks/useSocketIO'
+import { PERSONALITIES, VOICE_CATEGORIES } from '../data/personalities'
+
+export default function VoiceCircleV2({ wsUrl = 'http://localhost:8001' }) {
+  const [isListening, setIsListening] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [isResponding, setIsResponding] = useState(false)
+  const [transcript, setTranscript] = useState('')
+  const [response, setResponse] = useState('')
+  const [showPersonalitySelector, setShowPersonalitySelector] = useState(false)
+  const [volume, setVolume] = useState(0)
+  const [error, setError] = useState('')
+  const animationRef = useRef()
+  
+  const { personalityData, currentPersonality, applyPersonality } = usePersonality()
+  
+  // Socket.IO connection
+  const { isConnected, emit } = useSocketIO(wsUrl, {
+    autoConnect: true,
+    onConnect: () => {
+      console.log('[VoiceCircleV2] Socket.IO connected')
+      setError('')
+    },
+    onDisconnect: () => {
+      console.log('[VoiceCircleV2] Socket.IO disconnected')
+      setError('Conexión perdida')
+    },
+    onError: (err) => {
+      console.error('[VoiceCircleV2] Socket.IO error:', err)
+      setError('Error de conexión')
+    },
+    onMessage: (data) => {
+      console.log('[VoiceCircleV2] Received:', data)
+      // Handle incoming messages
+      if (data.transcript) {
+        setTranscript(data.transcript)
+      }
+      if (data.response) {
+        setResponse(data.response)
+      }
+    }
+  })
+
+  // Simple voice detection simulation
+  useEffect(() => {
+    if (!isConnected) return
+    
+    // Auto-start listening simulation
+    const timer = setTimeout(() => {
+      setIsListening(true)
+    }, 1000)
+    
+    return () => clearTimeout(timer)
+  }, [isConnected])
+
+  // Helper functions
+  const getCircleColor = () => {
+    if (isResponding) return personalityData?.color || '#60a5fa'
+    if (isProcessing) return '#fbbf24'
+    if (isListening) return '#10b981'
+    return '#6b7280'
+  }
+
+  const getStatusText = () => {
+    if (error) return error
+    if (!isConnected) return 'Conectando...'
+    if (isResponding) return 'Respondiendo...'
+    if (isProcessing) return 'Procesando...'
+    if (isListening) return 'Escuchando...'
+    return 'Listo para hablar'
+  }
+
+  const handleStartListening = () => {
+    if (!isConnected) return
+    setIsListening(true)
+    setTranscript('')
+    setResponse('')
+    // Simulate voice detection
+    setTimeout(() => {
+      setIsListening(false)
+      setIsProcessing(true)
+      setTranscript('Ejemplo de transcripción')
+      setTimeout(() => {
+        setIsProcessing(false)
+        setIsResponding(true)
+        setResponse('Ejemplo de respuesta del asistente')
+        setTimeout(() => {
+          setIsResponding(false)
+        }, 2000)
+      }, 1500)
+    }, 3000)
+  }
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '20px',
+      position: 'relative'
+    }}>
+      {/* Header con personalidad */}
+      <div style={{
+        position: 'absolute',
+        top: '20px',
+        left: '20px',
+        right: '20px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
+        <div style={{
+          background: personalityData ? `linear-gradient(135deg, ${personalityData.color}20, ${personalityData.color}10)` : 'rgba(59, 130, 246, 0.1)',
+          border: personalityData ? `1px solid ${personalityData.color}40` : '1px solid rgba(59, 130, 246, 0.3)',
+          borderRadius: '12px',
+          padding: '12px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px'
+        }}>
+          <span style={{ fontSize: '1.5em' }}>{personalityData?.emoji || '🤖'}</span>
+          <div>
+            <div style={{ color: '#e2e8f0', fontWeight: 600 }}>
+              {personalityData?.name || 'Asistente'}
+            </div>
+            <div style={{ color: '#94a3b8', fontSize: '0.85em' }}>
+              {personalityData?.description || 'Asistente de voz con IA'}
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={() => setShowPersonalitySelector(!showPersonalitySelector)}
+          style={{
+            background: 'rgba(59, 130, 246, 0.1)',
+            border: '1px solid rgba(59, 130, 246, 0.3)',
+            borderRadius: '12px',
+            padding: '12px 20px',
+            color: '#60a5fa',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontWeight: 500
+          }}
+        >
+          🎭 Personalidades
+        </button>
+      </div>
+
+      {/* Círculo principal */}
+      <div style={{
+        position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '30px'
+      }}>
+        <div 
+          ref={animationRef}
+          onClick={handleStartListening}
+          style={{
+            width: '200px',
+            height: '200px',
+            borderRadius: '50%',
+            background: `radial-gradient(circle, ${getCircleColor()}40, ${getCircleColor()}20)`,
+            border: `3px solid ${getCircleColor()}`,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: isConnected ? 'pointer' : 'not-allowed',
+            transition: 'all 0.3s ease',
+            transform: isListening ? 'scale(1.1)' : 'scale(1)',
+            boxShadow: isListening ? `0 0 30px ${getCircleColor()}60` : `0 0 15px ${getCircleColor()}30`
+          }}
+        >
+          <div style={{
+            fontSize: '3em',
+            marginBottom: '10px'
+          }}>
+            {personalityData?.emoji || '🤖'}
+          </div>
+          
+          <div style={{
+            color: '#e2e8f0',
+            fontSize: '1.1em',
+            fontWeight: 500,
+            textAlign: 'center'
+          }}>
+            {getStatusText()}
+          </div>
+
+          {isListening && (
+            <div style={{
+              marginTop: '15px',
+              width: '150px',
+              height: '4px',
+              background: 'rgba(0,0,0,0.3)',
+              borderRadius: '2px',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                width: `${volume * 100}%`,
+                height: '100%',
+                background: getCircleColor(),
+                transition: 'width 0.1s'
+              }} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Transcripción y respuesta */}
+      <div style={{
+        marginTop: '40px',
+        maxWidth: '600px',
+        width: '100%',
+        textAlign: 'center'
+      }}>
+        {transcript && (
+          <div style={{
+            background: 'rgba(0,0,0,0.3)',
+            borderRadius: '12px',
+            padding: '15px',
+            marginBottom: '15px',
+            border: '1px solid rgba(75, 85, 99, 0.3)'
+          }}>
+            <div style={{ color: '#94a3b8', fontSize: '0.9em', marginBottom: '5px' }}>
+              Tú dijiste:
+            </div>
+            <div style={{ color: '#e2e8f0', fontSize: '1.1em' }}>
+              "{transcript}"
+            </div>
+          </div>
+        )}
+
+        {response && (
+          <div style={{
+            background: `linear-gradient(135deg, ${getCircleColor()}10, rgba(0,0,0,0.3))`,
+            borderRadius: '12px',
+            padding: '15px',
+            border: `1px solid ${getCircleColor()}30`
+          }}>
+            <div style={{ color: getCircleColor(), fontSize: '0.9em', marginBottom: '5px' }}>
+              {personalityData?.name || 'Asistente'}:
+            </div>
+            <div style={{ color: '#e2e8f0', fontSize: '1.1em' }}>
+              "{response}"
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Controles */}
+      <div style={{
+        position: 'absolute',
+        bottom: '30px',
+        display: 'flex',
+        gap: '15px'
+      }}>
+        <button
+          onClick={handleStartListening}
+          disabled={!isConnected || isListening}
+          style={{
+            background: isConnected ? 'rgba(34, 197, 94, 0.2)' : 'rgba(107, 114, 128, 0.2)',
+            border: isConnected ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(107, 114, 128, 0.3)',
+            color: isConnected ? '#4ade80' : '#9ca3af',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            cursor: isConnected && !isListening ? 'pointer' : 'not-allowed',
+            fontWeight: 500,
+            opacity: isListening ? 0.6 : 1
+          }}
+        >
+          {isListening ? '🎤 Escuchando...' : '🎤 Hablar'}
+        </button>
+
+        <button
+          onClick={() => window.history.back()}
+          style={{
+            background: 'rgba(107, 114, 128, 0.2)',
+            border: '1px solid rgba(107, 114, 128, 0.3)',
+            color: '#9ca3af',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontWeight: 500
+          }}
+        >
+          ← Volver
+        </button>
+      </div>
+
+      {/* Selector de personalidades */}
+      {showPersonalitySelector && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: '#1e293b',
+            borderRadius: '16px',
+            padding: '30px',
+            maxWidth: '800px',
+            width: '90%',
+            maxHeight: '80vh',
+            overflow: 'auto'
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '20px'
+            }}>
+              <h3 style={{ color: '#e2e8f0', margin: 0 }}>🎭 Seleccionar Personalidad</h3>
+              <button
+                onClick={() => setShowPersonalitySelector(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#9ca3af',
+                  fontSize: '1.5em',
+                  cursor: 'pointer'
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gap: '20px' }}>
+              {Object.entries(VOICE_CATEGORIES).map(([categoryKey, category]) => (
+                <div key={categoryKey}>
+                  <h4 style={{
+                    color: '#e2e8f0',
+                    marginBottom: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <span>{category.emoji}</span>
+                    {category.name}
+                  </h4>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: '10px'
+                  }}>
+                    {category.personalities.map(personalityKey => {
+                      const personality = PERSONALITIES[personalityKey]
+                      const isActive = currentPersonality === personalityKey
+                      
+                      return (
+                        <button
+                          key={personalityKey}
+                          onClick={() => {
+                            applyPersonality(personalityKey)
+                            setShowPersonalitySelector(false)
+                          }}
+                          style={{
+                            background: isActive 
+                              ? `linear-gradient(135deg, ${personality.color}30, ${personality.color}20)`
+                              : 'rgba(0,0,0,0.3)',
+                            border: isActive 
+                              ? `2px solid ${personality.color}` 
+                              : '1px solid rgba(75, 85, 99, 0.3)',
+                            borderRadius: '8px',
+                            padding: '12px',
+                            cursor: 'pointer',
+                            textAlign: 'left'
+                          }}
+                        >
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            marginBottom: '4px'
+                          }}>
+                            <span style={{ fontSize: '1.2em' }}>{personality.emoji}</span>
+                            <span style={{
+                              color: isActive ? personality.color : '#e2e8f0',
+                              fontWeight: isActive ? 600 : 500,
+                              fontSize: '0.9em'
+                            }}>
+                              {personality.name}
+                            </span>
+                          </div>
+                          <div style={{
+                            color: '#94a3b8',
+                            fontSize: '0.8em',
+                            lineHeight: '1.3'
+                          }}>
+                            {personality.description}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '20px',
+      position: 'relative'
+    }}>
+      {/* Header con personalidad */}
+      <div style={{
+        position: 'absolute',
+        top: '20px',
+        left: '20px',
+        right: '20px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
+        <div style={{
+          background: personalityData ? `linear-gradient(135deg, ${personalityData.color}20, ${personalityData.color}10)` : 'rgba(59, 130, 246, 0.1)',
+          border: personalityData ? `1px solid ${personalityData.color}40` : '1px solid rgba(59, 130, 246, 0.3)',
+          borderRadius: '12px',
+          padding: '12px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px'
+        }}>
+          <span style={{ fontSize: '1.5em' }}>{personalityData?.emoji || '🤖'}</span>
+          <div>
+            <div style={{ color: '#e2e8f0', fontWeight: 600 }}>
+              {personalityData?.name || 'Asistente'}
+            </div>
+            <div style={{ color: '#94a3b8', fontSize: '0.85em' }}>
+              {personalityData?.description || 'Asistente de voz con IA'}
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={() => setShowPersonalitySelector(!showPersonalitySelector)}
+          style={{
+            background: 'rgba(59, 130, 246, 0.1)',
+            border: '1px solid rgba(59, 130, 246, 0.3)',
+            borderRadius: '12px',
+            padding: '12px 20px',
+            color: '#60a5fa',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontWeight: 500,
+            transition: 'all 0.2s'
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.background = 'rgba(59, 130, 246, 0.2)'
+            e.target.style.transform = 'scale(1.05)'
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.background = 'rgba(59, 130, 246, 0.1)'
+            e.target.style.transform = 'scale(1)'
+          }}
+        >
+          🎭 Cambiar Personalidad
+        </button>
+      </div>
+
+      {/* Círculo principal animado */}
+      <div style={{
+        position: 'relative',
+        width: '300px',
+        height: '300px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        {/* Anillos de pulso */}
+        {(isListening || isProcessing || isResponding) && (
+          <>
+            <div style={{
+              position: 'absolute',
+              width: '100%',
+              height: '100%',
+              borderRadius: '50%',
+              border: `2px solid ${getCircleColor()}`,
+              opacity: 0.3,
+              animation: 'pulse 2s infinite'
+            }} />
+            <div style={{
+              position: 'absolute',
+              width: '120%',
+              height: '120%',
+              borderRadius: '50%',
+              border: `1px solid ${getCircleColor()}`,
+              opacity: 0.2,
+              animation: 'pulse 2s infinite 0.5s'
+            }} />
+          </>
+        )}
+
+        {/* Círculo central */}
+        <div
+          ref={animationRef}
+          style={{
+            width: '250px',
+            height: '250px',
+            borderRadius: '50%',
+            background: `radial-gradient(circle at 30% 30%, ${getCircleColor()}40, ${getCircleColor()}20)`,
+            border: `3px solid ${getCircleColor()}`,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'transform 0.1s ease-out',
+            boxShadow: `0 0 60px ${getCircleColor()}40`,
+            cursor: isActive ? 'default' : 'pointer'
+          }}
+          onClick={() => !isActive && start()}
+        >
+          {/* Emoji de personalidad */}
+          <div style={{ fontSize: '4em', marginBottom: '10px' }}>
+            {personalityData?.emoji || '🎤'}
+          </div>
+          
+          {/* Estado */}
+          <div style={{
+            color: '#e2e8f0',
+            fontSize: '1.1em',
+            fontWeight: 500,
+            textAlign: 'center'
+          }}>
+            {getStatusText()}
+          </div>
+
+          {/* Indicador de volumen */}
+          {isListening && (
+            <div style={{
+              marginTop: '15px',
+              width: '150px',
+              height: '4px',
+              background: 'rgba(0,0,0,0.3)',
+              borderRadius: '2px',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                width: `${volume * 100}%`,
+                height: '100%',
+                background: getCircleColor(),
+                transition: 'width 0.1s'
+              }} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Transcripción y respuesta */}
+      <div style={{
+        marginTop: '40px',
+        maxWidth: '600px',
+        width: '100%',
+        textAlign: 'center'
+      }}>
+        {transcript && (
+          <div style={{
+            background: 'rgba(0,0,0,0.3)',
+            borderRadius: '12px',
+            padding: '15px',
+            marginBottom: '15px',
+            border: '1px solid rgba(75, 85, 99, 0.3)'
+          }}>
+            <div style={{ color: '#94a3b8', fontSize: '0.9em', marginBottom: '5px' }}>
+              Tú dijiste:
+            </div>
+            <div style={{ color: '#e2e8f0', fontSize: '1.1em' }}>
+              "{transcript}"
+            </div>
+          </div>
+        )}
+
+        {response && (
+          <div style={{
+            background: `linear-gradient(135deg, ${getCircleColor()}10, rgba(0,0,0,0.3))`,
+            borderRadius: '12px',
+            padding: '15px',
+            border: `1px solid ${getCircleColor()}30`
+          }}>
+            <div style={{ color: getCircleColor(), fontSize: '0.9em', marginBottom: '5px' }}>
+              {personalityData?.name || 'Asistente'}:
+            </div>
+            <div style={{ color: '#e2e8f0', fontSize: '1.1em' }}>
+              "{response}"
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Controles */}
+      <div style={{
+        position: 'absolute',
+        bottom: '30px',
+        display: 'flex',
+        gap: '15px'
+      }}>
+        {isActive ? (
+          <button
+            onClick={stop}
+            style={{
+              background: 'rgba(239, 68, 68, 0.2)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              color: '#f87171',
+              padding: '12px 24px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 500,
+              fontSize: '1em',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.background = 'rgba(239, 68, 68, 0.3)'
+              e.target.style.transform = 'scale(1.05)'
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.background = 'rgba(239, 68, 68, 0.2)'
+              e.target.style.transform = 'scale(1)'
+            }}
+          >
+            ⏹️ Detener
+          </button>
+        ) : (
+          <button
+            onClick={start}
+            style={{
+              background: 'rgba(34, 197, 94, 0.2)',
+              border: '1px solid rgba(34, 197, 94, 0.3)',
+              color: '#4ade80',
+              padding: '12px 24px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 500,
+              fontSize: '1em',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.background = 'rgba(34, 197, 94, 0.3)'
+              e.target.style.transform = 'scale(1.05)'
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.background = 'rgba(34, 197, 94, 0.2)'
+              e.target.style.transform = 'scale(1)'
+            }}
+          >
+            🎤 Iniciar
+          </button>
+        )}
+      </div>
+
+      {/* Selector de personalidades flotante */}
+      {showPersonalitySelector && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: 'linear-gradient(135deg, #1e293b, #0f172a)',
+            borderRadius: '16px',
+            padding: '30px',
+            maxWidth: '800px',
+            width: '100%',
+            maxHeight: '80vh',
+            overflow: 'auto',
+            border: '1px solid rgba(75, 85, 99, 0.3)'
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '20px'
+            }}>
+              <h2 style={{ color: '#e2e8f0', margin: 0 }}>🎭 Seleccionar Personalidad</h2>
+              <button
+                onClick={() => setShowPersonalitySelector(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#94a3b8',
+                  fontSize: '1.5em',
+                  cursor: 'pointer'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {Object.entries(VOICE_CATEGORIES).map(([categoryKey, category]) => (
+              <div key={categoryKey} style={{ marginBottom: '20px' }}>
+                <h3 style={{
+                  color: '#94a3b8',
+                  fontSize: '0.9em',
+                  textTransform: 'uppercase',
+                  marginBottom: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  {category.emoji} {category.name}
+                </h3>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                  gap: '10px'
+                }}>
+                  {category.personalities.map(personalityKey => {
+                    const personality = PERSONALITIES[personalityKey]
+                    const isActive = currentPersonality === personalityKey
+                    
+                    return (
+                      <button
+                        key={personalityKey}
+                        onClick={() => {
+                          applyPersonality(personalityKey)
+                          setShowPersonalitySelector(false)
+                        }}
+                        style={{
+                          background: isActive 
+                            ? `linear-gradient(135deg, ${personality.color}30, ${personality.color}20)`
+                            : 'rgba(0,0,0,0.3)',
+                          border: isActive 
+                            ? `2px solid ${personality.color}` 
+                            : '1px solid rgba(75, 85, 99, 0.3)',
+                          borderRadius: '8px',
+                          padding: '12px',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isActive) {
+                            e.currentTarget.style.background = `linear-gradient(135deg, ${personality.color}20, ${personality.color}10)`
+                            e.currentTarget.style.borderColor = `${personality.color}60`
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isActive) {
+                            e.currentTarget.style.background = 'rgba(0,0,0,0.3)'
+                            e.currentTarget.style.borderColor = 'rgba(75, 85, 99, 0.3)'
+                          }
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <span style={{ fontSize: '1.2em' }}>{personality.emoji}</span>
+                          <span style={{ 
+                            color: isActive ? personality.color : '#e2e8f0', 
+                            fontWeight: isActive ? 600 : 500,
+                            fontSize: '0.9em'
+                          }}>
+                            {personality.name}
+                          </span>
+                        </div>
+                        <div style={{ 
+                          color: '#94a3b8', 
+                          fontSize: '0.75em',
+                          lineHeight: '1.3'
+                        }}>
+                          {personality.description}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Estilos de animación */}
+      <style>{`
+        @keyframes pulse {
+          0% {
+            transform: scale(1);
+            opacity: 0.3;
+          }
+          50% {
+            transform: scale(1.1);
+            opacity: 0.1;
+          }
+          100% {
+            transform: scale(1.2);
+            opacity: 0;
+          }
+        }
+      `}</style>
+    </div>
+  )
+}

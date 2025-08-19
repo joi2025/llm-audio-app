@@ -1,0 +1,275 @@
+/* 🎭 ESTILOS PARA PERSONALIDADES AVANZADAS */
+
+.personality-card {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border: 1px solid #3a4a6b;
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.personality-grid {
+  display: grid;
+  gap: 32px;
+  margin-top: 20px;
+}
+
+.category-section {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.category-section h4 {
+  margin: 0 0 8px 0;
+  font-size: 1.3em;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.category-desc {
+  color: #94a3b8;
+  font-size: 0.9em;
+  margin: 0 0 16px 0;
+  font-style: italic;
+}
+
+.personality-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.personality-option {
+  background: rgba(255, 255, 255, 0.03);
+  border: 2px solid transparent;
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.personality-option:hover {
+  background: rgba(255, 255, 255, 0.06);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+}
+
+.personality-option.selected {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: currentColor;
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+}
+
+.personality-option.selected::before {
+  content: '✓';
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: currentColor;
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.personality-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.personality-emoji {
+  font-size: 1.8em;
+  line-height: 1;
+}
+
+.personality-name {
+  font-weight: 600;
+  font-size: 1.1em;
+  color: #e2e8f0;
+}
+
+.personality-desc {
+  color: #94a3b8;
+  font-size: 0.9em;
+  line-height: 1.4;
+  margin: 0 0 12px 0;
+}
+
+.personality-voice {
+  font-size: 0.8em;
+  color: #64748b;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px 8px;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+/* Personalidad Activa */
+.current-personality {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.current-personality h4 {
+  color: #e2e8f0;
+  margin: 0 0 16px 0;
+  font-size: 1.2em;
+}
+
+.active-personality {
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid;
+  border-radius: 12px;
+  padding: 20px;
+  position: relative;
+}
+
+.active-personality::before {
+  content: '🎯';
+  position: absolute;
+  top: -12px;
+  left: 20px;
+  background: #1a1a2e;
+  padding: 0 8px;
+  font-size: 1.2em;
+}
+
+.active-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.active-emoji {
+  font-size: 2em;
+  line-height: 1;
+}
+
+.active-name {
+  font-weight: 700;
+  font-size: 1.3em;
+  color: #e2e8f0;
+}
+
+.active-voice {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.9em;
+  color: #94a3b8;
+}
+
+.active-desc {
+  color: #cbd5e1;
+  font-size: 1em;
+  line-height: 1.5;
+  margin: 0;
+  font-style: italic;
+}
+
+/* Formularios mejorados */
+.form-row {
+  margin-bottom: 20px;
+}
+
+.form-row label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #e2e8f0;
+  font-size: 0.95em;
+}
+
+.form-row select,
+.form-row input,
+.form-row textarea {
+  width: 100%;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: 0.95em;
+  transition: all 0.3s ease;
+}
+
+.form-row select:focus,
+.form-row input:focus,
+.form-row textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.form-row textarea {
+  resize: vertical;
+  min-height: 100px;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.save-btn {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: white;
+  border: none;
+  padding: 14px 28px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 1em;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.save-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(59, 130, 246, 0.3);
+}
+
+.save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .personality-options {
+    grid-template-columns: 1fr;
+  }
+  
+  .active-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .personality-card {
+    padding: 16px;
+  }
+  
+  .category-section {
+    padding: 16px;
+  }
+}
