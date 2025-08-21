@@ -1,7 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("kotlin-kapt")
+    id("org.jetbrains.kotlin.kapt")
     id("com.google.dagger.hilt.android")
 }
 
@@ -72,10 +72,13 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.animation:animation")
+    implementation("androidx.compose.material:material-icons-extended")
     
     // ViewModel & State Management
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
+    // Navigation
+    implementation("androidx.navigation:navigation-compose:2.7.5")
     
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
@@ -96,14 +99,18 @@ dependencies {
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
     kapt("com.google.dagger:hilt-compiler:2.48")
     
-    // Security - Encrypted SharedPreferences
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    // DataStore (Preferences) for API key persistence
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
     
     // Permissions
     implementation("com.google.accompanist:accompanist-permissions:0.31.1-alpha")
     
     // Audio Processing
     implementation("androidx.media:media:1.7.0")
+    
+    // Room (local database)
+    implementation("androidx.room:room-ktx:2.6.1")
+    kapt("androidx.room:room-compiler:2.6.1")
     
     // Testing
     testImplementation("junit:junit:4.13.2")

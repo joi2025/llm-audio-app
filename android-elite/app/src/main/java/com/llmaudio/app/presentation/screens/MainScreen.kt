@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,11 +19,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.platform.LocalTextToolbar
+import androidx.compose.ui.platform.TextToolbar
+import androidx.compose.ui.platform.TextToolbarStatus
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import android.os.Build
 import com.llmaudio.app.domain.model.Personalities
 import com.llmaudio.app.domain.model.Personality
 import com.llmaudio.app.presentation.components.VoiceAvatar
@@ -32,6 +39,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
+    onNavigateToHistory: () -> Unit = {},
     viewModel: VoicePipelineViewModel = hiltViewModel()
 ) {
     val voiceState by viewModel.voiceState.collectAsState()
@@ -56,6 +64,19 @@ fun MainScreen(
                 )
             )
     ) {
+        // History button
+        IconButton(
+            onClick = onNavigateToHistory,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(16.dp)
+        ) {
+            Icon(
+                Icons.Filled.History,
+                contentDescription = "Historial",
+                tint = Color.White.copy(alpha = 0.7f)
+            )
+        }
         // Settings button
         IconButton(
             onClick = { showSettings = true },
@@ -322,28 +343,35 @@ fun SettingsDialog(
     onDismiss: () -> Unit,
     viewModel: VoicePipelineViewModel = hiltViewModel()
 ) {
+    val savedKey by viewModel.apiKeyFlow.collectAsState(initial = "")
     var apiKey by remember { mutableStateOf("") }
+    LaunchedEffect(savedKey) { if (apiKey.isEmpty()) apiKey = savedKey }
     
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Configuración") },
         text = {
-            Column {
-                Text("OpenAI API Key")
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = apiKey,
-                    onValueChange = { apiKey = it },
-                    placeholder = { Text("sk-...") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+            MiuiSafeTextToolbar {
+                Column {
+                    Text("OpenAI API Key")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = apiKey,
+                        onValueChange = { apiKey = it },
+                        placeholder = { Text("sk-...") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        visualTransformation = PasswordVisualTransformation()
+                    )
+                }
             }
         },
         confirmButton = {
             TextButton(
                 onClick = {
-                    // Save API key to secure storage
+                    // Save API key via ViewModel -> DataStore
+                    viewModel.saveApiKey(apiKey.trim())
+                    android.util.Log.d("ApiKey", "UI saved key len=${apiKey.trim().length}")
                     onDismiss()
                 }
             ) {
@@ -356,4 +384,41 @@ fun SettingsDialog(
             }
         }
     )
+}
+
+@Composable
+private fun MiuiSafeTextToolbar(content: @Composable () -> Unit) {
+    val isMiui = remember {
+        val manufacturer = (Build.MANUFACTURER ?: "").lowercase()
+        val brand = (Build.BRAND ?: "").lowercase()
+        manufacturer.contains("xiaomi") ||
+                brand.contains("xiaomi") || brand.contains("redmi") || brand.contains("poco")
+    }
+    if (isMiui) {
+        val noToolbar = remember {
+            object : TextToolbar {
+                override val status: TextToolbarStatus
+                    get() = TextToolbarStatus.Hidden
+
+                override fun showMenu(
+                    rect: Rect,
+                    onCopyRequested: (() -> Unit)?,
+                    onPasteRequested: (() -> Unit)?,
+                    onCutRequested: (() -> Unit)?,
+                    onSelectAllRequested: (() -> Unit)?
+                ) {
+                    // no-op: prevent MIUI selection toolbar crash
+                }
+
+                override fun hide() {
+                    // no-op
+                }
+            }
+        }
+        CompositionLocalProvider(LocalTextToolbar provides noToolbar) {
+            content()
+        }
+    } else {
+        content()
+    }
 }

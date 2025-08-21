@@ -3,10 +3,14 @@ package com.llmaudio.app.presentation.viewmodel
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.util.Log
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.llmaudio.app.data.api.*
+import com.llmaudio.app.data.repository.MessageRepository
+import com.llmaudio.app.data.store.ApiKeyStore
 import com.llmaudio.app.domain.audio.AudioPlayer
 import com.llmaudio.app.domain.audio.VoiceActivityDetector
 import com.llmaudio.app.domain.model.Personalities
@@ -22,8 +26,10 @@ import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
 import java.io.BufferedReader
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStreamReader
 import java.util.concurrent.ConcurrentLinkedQueue
 import javax.inject.Inject
 import kotlin.math.abs
@@ -32,8 +38,12 @@ import kotlin.math.abs
 class VoicePipelineViewModel @Inject constructor(
     private val openAiService: OpenAiService,
     private val audioPlayer: AudioPlayer,
-    private val sharedPreferences: android.content.SharedPreferences
+    private val apiKeyStore: ApiKeyStore,
+    private val messageRepository: MessageRepository
 ) : ViewModel() {
+
+    // Reuse a single Gson instance to avoid frequent allocations during SSE parsing
+    private val gson = Gson()
 
     // UI States
     sealed class VoiceState {
@@ -75,12 +85,20 @@ class VoicePipelineViewModel @Inject constructor(
     private var currentLLMCall: Call<ResponseBody>? = null
     private var currentTTSCall: Call<ResponseBody>? = null
     
-    // API Configuration
-    private val apiKey: String
-        get() = sharedPreferences.getString("api_key", "") ?: ""
-    
-    private val authHeader: String
-        get() = "Bearer $apiKey"
+    // API Key state (from DataStore) and helpers
+    private val apiKeyState: StateFlow<String> = apiKeyStore.apiKeyFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+    val apiKeyFlow: StateFlow<String> = apiKeyState
+
+    fun saveApiKey(key: String) {
+        viewModelScope.launch {
+            Log.d("ApiKey", "VM saving key len=${key.length}")
+            apiKeyStore.setApiKey(key)
+        }
+    }
+
+    private fun currentApiKey(): String = apiKeyState.value
+    private fun authHeader(): String = "Bearer ${currentApiKey()}"
 
     // Conversation History
     private val conversationHistory = mutableListOf<Message>()
@@ -123,6 +141,7 @@ class VoicePipelineViewModel @Inject constructor(
         
         val buffer = ByteArray(bufferSize)
         vad.reset()
+        var lastLevelEmit = 0L
         
         while (isActive && _voiceState.value == VoiceState.Listening) {
             val readBytes = audioRecord?.read(buffer, 0, bufferSize) ?: 0
@@ -132,7 +151,11 @@ class VoicePipelineViewModel @Inject constructor(
                 
                 // Calculate audio level for UI
                 val level = calculateAudioLevel(chunk)
-                _audioLevel.emit(level)
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastLevelEmit >= 33L) { // ~30 FPS
+                    _audioLevel.emit(level)
+                    lastLevelEmit = now
+                }
                 
                 // VAD processing
                 if (vad.processSamples(chunk)) {
@@ -170,17 +193,24 @@ class VoicePipelineViewModel @Inject constructor(
         _voiceState.value = VoiceState.Processing
         
         // Combine audio buffers
-        val audioData = audioBuffers.fold(ByteArray(0)) { acc, chunk -> acc + chunk }
+        val baos = ByteArrayOutputStream()
+        while (true) {
+            val chunk = audioBuffers.poll() ?: break
+            baos.write(chunk)
+        }
+        val audioData = baos.toByteArray()
         audioBuffers.clear()
         
-        if (audioData.isEmpty() || apiKey.isEmpty()) {
+        val key = currentApiKey()
+        if (audioData.isEmpty() || key.isEmpty()) {
+            Log.w("Repo", "Aborting processAudio: audioDataEmpty=${audioData.isEmpty()} keyEmpty=${key.isEmpty()}")
             _voiceState.value = VoiceState.Idle
             return
         }
         
         try {
             // Save audio to temp file
-            val audioFile = File.createTempFile("audio_", ".wav", viewModelScope.coroutineContext[Job]?.let { null })
+            val audioFile = File.createTempFile("audio_", ".wav", null)
             FileOutputStream(audioFile).use { it.write(createWavHeader(audioData) + audioData) }
             
             // STT - Transcribe audio
@@ -190,11 +220,14 @@ class VoicePipelineViewModel @Inject constructor(
                 audioFile.asRequestBody("audio/wav".toMediaType())
             )
             
-            val transcriptionResponse = openAiService.transcribeAudio(authHeader, filePart)
+            Log.d("Repo", "Calling STT with API key len=${key.length}")
+            val transcriptionResponse = openAiService.transcribeAudio(authHeader(), filePart)
             _transcription.value = transcriptionResponse.text
             
             // Add to conversation
             conversationHistory.add(Message("user", transcriptionResponse.text))
+            // Persist user message
+            messageRepository.saveMessage("user", transcriptionResponse.text)
             
             // Start LLM streaming
             streamLLMResponse()
@@ -214,8 +247,8 @@ class VoicePipelineViewModel @Inject constructor(
             ) + conversationHistory,
             stream = true
         )
-        
-        currentLLMCall = openAiService.streamChatCompletion(authHeader, request)
+        Log.d("Repo", "Starting LLM stream with API key len=${currentApiKey().length}")
+        currentLLMCall = openAiService.streamChatCompletion(authHeader(), request)
         
         currentLLMCall?.enqueue(object : Callback<ResponseBody> {
             override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
@@ -240,6 +273,7 @@ class VoicePipelineViewModel @Inject constructor(
             val reader = BufferedReader(responseBody.charStream())
             val fullResponse = StringBuilder()
             val sentenceBuffer = StringBuilder()
+            var lastEmitTime = 0L
             
             reader.useLines { lines ->
                 lines.forEach { line ->
@@ -252,17 +286,22 @@ class VoicePipelineViewModel @Inject constructor(
                             chunk?.let { token ->
                                 fullResponse.append(token)
                                 sentenceBuffer.append(token)
-                                
+
+                                var shouldEmit = false
                                 // Check for sentence completion
                                 if (token.contains('.') || token.contains('!') || token.contains('?')) {
                                     val sentence = sentenceBuffer.toString()
                                     sentenceBuffer.clear()
-                                    
                                     // Launch TTS for this sentence
                                     launchTTS(sentence)
+                                    shouldEmit = true
                                 }
-                                
-                                _assistantResponse.emit(fullResponse.toString())
+
+                                val now = SystemClock.elapsedRealtime()
+                                if (shouldEmit || now - lastEmitTime >= 50L) {
+                                    _assistantResponse.emit(fullResponse.toString())
+                                    lastEmitTime = now
+                                }
                             }
                         } catch (e: Exception) {
                             e.printStackTrace()
@@ -271,6 +310,9 @@ class VoicePipelineViewModel @Inject constructor(
                 }
             }
             
+            // Final UI update to ensure latest text is shown
+            _assistantResponse.emit(fullResponse.toString())
+            
             // Process any remaining text
             if (sentenceBuffer.isNotEmpty()) {
                 launchTTS(sentenceBuffer.toString())
@@ -278,12 +320,14 @@ class VoicePipelineViewModel @Inject constructor(
             
             // Add to conversation history
             conversationHistory.add(Message("assistant", fullResponse.toString()))
+            // Persist assistant message
+            messageRepository.saveMessage("assistant", fullResponse.toString())
         }
     }
 
     private fun parseSSEChunk(data: String): String? {
         return try {
-            val json = Gson().fromJson(data, Map::class.java)
+            val json = gson.fromJson(data, Map::class.java)
             val choices = json["choices"] as? List<*>
             val delta = (choices?.firstOrNull() as? Map<*, *>)?.get("delta") as? Map<*, *>
             delta?.get("content") as? String
@@ -308,7 +352,8 @@ class VoicePipelineViewModel @Inject constructor(
                 voice = _currentPersonality.value.voice
             )
             
-            val call = openAiService.generateSpeech(authHeader, request)
+            Log.d("Repo", "Calling TTS with API key len=${currentApiKey().length}")
+            val call = openAiService.generateSpeech(authHeader(), request)
             currentTTSCall = call
             
             val response = call.execute()

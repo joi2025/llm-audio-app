@@ -20,7 +20,7 @@ backend/data/
 # OS
 .DS_Store
 Thumbs.db
-\n# Python virtual environments\nbackend/venv/\n**/.venv/\n**/venv/
+
 # Python virtual environments
 backend/venv/
 **/.venv/
@@ -34,3 +34,17 @@ backend/venv/
 frontend/node_modules/
 **/node_modules/
 
+# Android (android-elite)
+android-elite/.idea/
+android-elite/.gradle/
+android-elite/app/build/
+android-elite/build/
+**/build/
+**/.gradle/
+*.iml
+*.apk
+*.aab
+android-elite/local.properties
+# Keystores (keep your release keystore out of VCS)
+**/*.jks
+**/*.keystore
