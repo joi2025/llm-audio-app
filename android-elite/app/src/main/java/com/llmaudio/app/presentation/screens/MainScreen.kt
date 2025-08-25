@@ -35,6 +35,7 @@ import com.llmaudio.app.domain.model.Personalities
 import com.llmaudio.app.domain.model.Personality
 import com.llmaudio.app.presentation.components.VoiceAvatar
 import com.llmaudio.app.presentation.viewmodel.VoicePipelineViewModel
+import com.llmaudio.app.domain.model.VoiceState
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)

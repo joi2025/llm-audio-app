@@ -625,7 +625,7 @@ private fun DeviceInfoCard(
             )
             Spacer(modifier = Modifier.height(12.dp))
             
-            info.toList().forEach { (key, value) ->
+            info.forEach { (key, value) ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween

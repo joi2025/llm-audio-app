@@ -4,10 +4,10 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-import com.llmaudio.app.data.api.OpenAiService
+import com.llmaudio.app.network.OpenAiService
 import com.llmaudio.app.data.network.ApiKeyInterceptor
 import com.llmaudio.app.data.store.ApiKeyStore
-import com.llmaudio.app.domain.audio.AudioPlayer
+import com.llmaudio.app.domain.model.AudioPlayer
 import com.llmaudio.app.data.db.AppDatabase
 import com.llmaudio.app.data.db.MessageDao
 import com.llmaudio.app.data.db.UsageStatsDao
@@ -100,8 +100,8 @@ object AppModule {
     
     @Provides
     @Singleton
-    fun provideAudioPlayer(): AudioPlayer {
-        return AudioPlayer()
+    fun provideAudioPlayer(@ApplicationContext context: Context): AudioPlayer {
+        return AudioPlayer(context)
     }
 
     @Provides

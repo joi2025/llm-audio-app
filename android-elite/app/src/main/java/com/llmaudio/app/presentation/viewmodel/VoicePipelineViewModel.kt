@@ -60,8 +60,8 @@ class VoicePipelineViewModel @Inject constructor(
         private const val SILENCE_DURATION_MS = 2000L
         private const val MIN_RECORDING_DURATION_MS = 1000L
         private const val MAX_RECORDING_DURATION_MS = 30000L
-        private const val SENTENCE_ENDINGS = setOf('.', '!', '?', '。', '！', '？')
-        private const val SENTENCE_SEPARATORS = setOf(',', ';', ':', '，', '；', '：')
+        private val SENTENCE_ENDINGS = setOf('.', '!', '?', '。', '！', '？')
+        private val SENTENCE_SEPARATORS = setOf(',', ';', ':', '，', '；', '：')
         private const val MIN_SENTENCE_LENGTH = 10
         private val ABBREVIATIONS = setOf("Dr", "Mr", "Mrs", "Ms", "Prof", "Inc", "Ltd", "etc", "vs", "e.g", "i.e")
     }

@@ -31,10 +31,11 @@ enum class MetricType(val displayName: String) {
 data class MetricData(
     val count: Int = 0,
     val samples: List<Long> = emptyList(),
-    val p50: Long = 0,
-    val p95: Long = 0,
-    val max: Long = 0,
-    val last: Long = 0
+    val p50: Double = 0.0,
+    val p95: Double = 0.0,
+    val max: Double = 0.0,
+    val average: Double = 0.0,
+    val last: Double = 0.0
 )
 
 data class LogEntry(

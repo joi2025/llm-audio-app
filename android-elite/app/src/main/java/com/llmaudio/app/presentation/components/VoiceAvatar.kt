@@ -13,12 +13,12 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.dp
-import com.llmaudio.app.presentation.viewmodel.VoicePipelineViewModel
+import com.llmaudio.app.domain.model.VoiceState
 import kotlin.math.*
 
 @Composable
 fun VoiceAvatar(
-    voiceState: VoicePipelineViewModel.VoiceState,
+    voiceState: VoiceState,
     audioLevel: Float,
     personality: com.llmaudio.app.domain.model.Personality,
     modifier: Modifier = Modifier
