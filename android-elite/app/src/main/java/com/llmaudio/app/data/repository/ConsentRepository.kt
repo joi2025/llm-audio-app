@@ -4,7 +4,8 @@ import android.content.SharedPreferences
 import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.time.LocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -23,10 +24,10 @@ class ConsentRepository @Inject constructor(
 ) {
     
     private val _consentFlow = MutableStateFlow(isConsentGranted())
-    val consentFlow: Flow<Boolean> = _consentFlow.distinctUntilChanged()
+    val consentFlow: StateFlow<Boolean> = _consentFlow.asStateFlow()
     
     private val _apiKeyFlow = MutableStateFlow(getApiKey())
-    val apiKeyFlow: Flow<String> = _apiKeyFlow.distinctUntilChanged()
+    val apiKeyFlow: StateFlow<String> = _apiKeyFlow.asStateFlow()
     
     /**
      * Check if this is the first app launch

@@ -4,7 +4,8 @@ import android.content.SharedPreferences
 import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -18,7 +19,8 @@ class ApiKeyStore @Inject constructor(
 ) {
     private val _apiKeyFlow = MutableStateFlow(getCurrentApiKey())
     
-    val apiKeyFlow: Flow<String> = _apiKeyFlow.distinctUntilChanged()
+    val apiKeyFlow: Flow<String> = _apiKeyFlow
+    val apiKey: StateFlow<String> = _apiKeyFlow.asStateFlow()
 
     private fun getCurrentApiKey(): String {
         return encryptedPrefs.getString(API_KEY_PREF, "") ?: ""
