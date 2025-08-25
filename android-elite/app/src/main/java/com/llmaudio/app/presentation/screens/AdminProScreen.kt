@@ -432,7 +432,7 @@ private fun DeviceTab() {
                 info = mapOf(
                     "Android" to "${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})",
                     "Dispositivo" to "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}",
-                    "Arquitectura" to android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "Unknown"
+                    "Arquitectura" to (android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "Unknown")
                 )
             )
         }
@@ -470,6 +470,7 @@ private fun HealthCard(
     onClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    @OptIn(ExperimentalMaterial3Api::class)
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),

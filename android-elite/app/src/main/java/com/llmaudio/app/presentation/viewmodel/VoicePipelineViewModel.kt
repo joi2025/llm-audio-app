@@ -20,6 +20,7 @@ import com.llmaudio.app.data.repository.MetricsRepository
 import com.llmaudio.app.data.store.ApiKeyStore
 import com.llmaudio.app.domain.model.AudioPlayer
 import com.llmaudio.app.domain.model.Personality
+import com.llmaudio.app.domain.model.Personalities
 import com.llmaudio.app.domain.model.VoiceState
 import com.llmaudio.app.network.OpenAiService
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -91,7 +92,7 @@ class VoicePipelineViewModel @Inject constructor(
     private val _assistantResponse = MutableStateFlow("")
     val assistantResponse: StateFlow<String> = _assistantResponse.asStateFlow()
 
-    private val _currentPersonality = MutableStateFlow(Personality.DEFAULT)
+    private val _currentPersonality = MutableStateFlow(Personalities.getDefault())
     val currentPersonality: StateFlow<Personality> = _currentPersonality.asStateFlow()
 
     private val _audioLevel = MutableStateFlow(0f)
@@ -101,6 +102,23 @@ class VoicePipelineViewModel @Inject constructor(
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
     init {
+        resetConversation()
+    }
+
+    // API Key management
+    val apiKeyFlow: StateFlow<String> = apiKeyStore.apiKey
+    
+    fun saveApiKey(key: String) {
+        viewModelScope.launch {
+            apiKeyStore.setApiKey(key)
+        }
+    }
+    
+    // Personality management
+    fun changePersonality(personality: Personality) {
+        viewModelScope.launch {
+            _currentPersonality.emit(personality)
+        }
         resetConversation()
     }
 
@@ -293,7 +311,8 @@ class VoicePipelineViewModel @Inject constructor(
             val body = MultipartBody.Part.createFormData("file", tempFile.name, requestFile)
             val model = MultipartBody.Part.createFormData("model", "whisper-1")
             
-            val response = openAiService.transcribeAudio(authHeader(), body, model).execute()
+            val call = openAiService.transcribeAudio(authHeader(), body, model)
+            val response = call.execute()
             tempFile.delete()
             
             if (response.isSuccessful) {
@@ -397,7 +416,9 @@ class VoicePipelineViewModel @Inject constructor(
                 val finalResponse = fullResponse.toString()
                 if (finalResponse.isNotEmpty()) {
                     conversationHistory.add(Message("assistant", finalResponse))
-                    messageRepository.saveMessage("assistant", finalResponse)
+                    viewModelScope.launch {
+                        messageRepository.saveMessage("assistant", finalResponse)
+                    }
                     Log.d(TAG, "Assistant response saved to history")
                 } else {
                     Log.w(TAG, "Empty response from LLM")

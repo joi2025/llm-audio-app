@@ -65,9 +65,7 @@ class MainActivityViewModel @Inject constructor(
     }
     
     fun declinePrivacyConsent() {
-        viewModelScope.launch {
-            _uiState.value = MainActivityUiState.ConsentDeclined
-        }
+        _uiState.value = MainActivityUiState.ConsentDeclined
     }
 }
 

@@ -152,13 +152,13 @@ fun MainScreen(
                         indication = null
                     ) {
                         when (voiceState) {
-                            is VoicePipelineViewModel.VoiceState.Idle -> {
+                            is VoiceState.Idle -> {
                                 viewModel.startListening()
                             }
-                            is VoicePipelineViewModel.VoiceState.Listening -> {
+                            is VoiceState.Listening -> {
                                 viewModel.stopListening()
                             }
-                            is VoicePipelineViewModel.VoiceState.Speaking -> {
+                            is VoiceState.Speaking -> {
                                 viewModel.interruptSpeaking()
                             }
                             else -> {}
@@ -182,14 +182,14 @@ fun MainScreen(
             ) {
                 Text(
                     text = when (voiceState) {
-                        is VoicePipelineViewModel.VoiceState.Idle -> "Toca para hablar"
-                        is VoicePipelineViewModel.VoiceState.Listening -> "Escuchando..."
-                        is VoicePipelineViewModel.VoiceState.Processing -> "Procesando..."
-                        is VoicePipelineViewModel.VoiceState.Speaking -> "Hablando..."
-                        is VoicePipelineViewModel.VoiceState.Error -> (voiceState as VoicePipelineViewModel.VoiceState.Error).message
+                        is VoiceState.Idle -> "Toca para hablar"
+                        is VoiceState.Listening -> "Escuchando..."
+                        is VoiceState.Processing -> "Procesando..."
+                        is VoiceState.Speaking -> "Hablando..."
+                        is VoiceState.Error -> (voiceState as VoiceState.Error).message
                     },
                     color = when (voiceState) {
-                        is VoicePipelineViewModel.VoiceState.Error -> Color.Red.copy(alpha = 0.8f)
+                        is VoiceState.Error -> Color.Red.copy(alpha = 0.8f)
                         else -> Color.White.copy(alpha = 0.7f)
                     },
                     fontSize = 16.sp

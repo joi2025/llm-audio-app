@@ -76,26 +76,26 @@ fun VoiceAvatar(
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             when (voiceState) {
-                is VoicePipelineViewModel.VoiceState.Idle -> {
+                is VoiceState.Idle -> {
                     drawIdleState(
                         color = personality.color,
                         scale = idlePulse
                     )
                 }
-                is VoicePipelineViewModel.VoiceState.Listening -> {
+                is VoiceState.Listening -> {
                     drawListeningState(
                         color = personality.color,
                         waveAngle = listeningWave,
                         audioLevel = audioLevel
                     )
                 }
-                is VoicePipelineViewModel.VoiceState.Processing -> {
+                is VoiceState.Processing -> {
                     drawProcessingState(
                         color = personality.color,
                         rotation = processingRotation
                     )
                 }
-                is VoicePipelineViewModel.VoiceState.Speaking -> {
+                is VoiceState.Speaking -> {
                     drawSpeakingState(
                         color = personality.color,
                         scale = speakingPulse,
@@ -103,7 +103,7 @@ fun VoiceAvatar(
                     )
                 }
 
-                is VoicePipelineViewModel.VoiceState.Error -> {
+                is VoiceState.Error -> {
                     drawErrorState(
                         color = Color.Red,
                         scale = idlePulse
