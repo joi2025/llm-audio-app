@@ -28,6 +28,7 @@ export default function AdminPanel() {
   const [saving, setSaving] = useState(false)
   const [convos, setConvos] = useState([])
   const [logs, setLogs] = useState([])
+  const [costs, setCosts] = useState(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('godmode')
   const [apiKeyStatus, setApiKeyStatus] = useState('unknown')
@@ -39,15 +40,17 @@ export default function AdminPanel() {
   const loadAll = useCallback(async () => {
     setLoading(true)
     try {
-      const [st, s, c, l] = await Promise.all([
+      const [st, s, c, l, costs] = await Promise.all([
         AdminAPI.status().catch(() => ({ error: 'No se pudo conectar al servidor' })),
         AdminAPI.getSettings().catch(() => ({})),
         AdminAPI.conversations(100).catch(() => []),
         AdminAPI.logs(200).catch(() => []),
+        fetch('/api/admin/costs?hours=24').then(r => r.json()).catch(() => null),
       ])
       setStatus(st)
       setSettings(s || {})
       setConvos(c || [])
+      setCosts(costs?.data || null)
       setLogs(l || [])
       
       // Verificar API Key
@@ -240,6 +243,7 @@ export default function AdminPanel() {
             { id: 'godmode', label: '🚀 God Mode', icon: '🚀' },
             { id: 'metrics', label: '⚡ Métricas', icon: '⚡' },
             { id: 'pipeline', label: '🔥 Pipeline', icon: '🔥' },
+            { id: 'costs', label: '💰 Costos API', icon: '💰' },
             { id: 'personalities', label: '🎭 Personalidades', icon: '🎭' },
             { id: 'config', label: '⚙️ Configuración', icon: '⚙️' },
             { id: 'conversations', label: '💬 Conversaciones', icon: '💬' },
@@ -415,6 +419,126 @@ export default function AdminPanel() {
         </div>
       )}
       
+      {/* Tab: COSTS ANALYTICS */}
+      {activeTab === 'costs' && (
+        <div style={{ background: 'rgba(30, 41, 59, 0.5)', borderRadius: '12px', padding: '20px' }}>
+          <h3 style={{ color: '#e2e8f0', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            💰 Análisis de Costos API
+            <span style={{ fontSize: '0.7em', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.2)', padding: '2px 8px', borderRadius: '4px' }}>TIEMPO REAL</span>
+          </h3>
+          
+          {costs ? (
+            <>
+              {/* Resumen de Costos */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '25px' }}>
+                <div style={{ background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)', borderRadius: '8px', padding: '15px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '1.2em' }}>💵</span>
+                    <span style={{ color: '#4ade80', fontWeight: 600 }}>Costo Total (24h)</span>
+                  </div>
+                  <div style={{ color: '#e2e8f0', fontSize: '1.8em', fontWeight: 700 }}>${costs.summary.total_cost.toFixed(6)}</div>
+                  <div style={{ color: '#94a3b8', fontSize: '0.85em' }}>{costs.summary.total_interactions} interacciones</div>
+                </div>
+                
+                <div style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '8px', padding: '15px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '1.2em' }}>📊</span>
+                    <span style={{ color: '#60a5fa', fontWeight: 600 }}>Costo Promedio</span>
+                  </div>
+                  <div style={{ color: '#e2e8f0', fontSize: '1.8em', fontWeight: 700 }}>${costs.summary.avg_cost.toFixed(6)}</div>
+                  <div style={{ color: '#94a3b8', fontSize: '0.85em' }}>por interacción</div>
+                </div>
+                
+                <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', padding: '15px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '1.2em' }}>⚠️</span>
+                    <span style={{ color: '#ef4444', fontWeight: 600 }}>Costo Máximo</span>
+                  </div>
+                  <div style={{ color: '#e2e8f0', fontSize: '1.8em', fontWeight: 700 }}>${costs.summary.max_cost.toFixed(6)}</div>
+                  <div style={{ color: '#94a3b8', fontSize: '0.85em' }}>interacción más costosa</div>
+                </div>
+                
+                <div style={{ background: 'rgba(168, 85, 247, 0.1)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '8px', padding: '15px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '1.2em' }}>🔢</span>
+                    <span style={{ color: '#a855f7', fontWeight: 600 }}>Tokens Totales</span>
+                  </div>
+                  <div style={{ color: '#e2e8f0', fontSize: '1.4em', fontWeight: 700 }}>
+                    {(costs.summary.total_tokens_in + costs.summary.total_tokens_out).toLocaleString()}
+                  </div>
+                  <div style={{ color: '#94a3b8', fontSize: '0.85em' }}>
+                    In: {costs.summary.total_tokens_in.toLocaleString()} | Out: {costs.summary.total_tokens_out.toLocaleString()}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Conversaciones Más Costosas */}
+              {costs.expensive && costs.expensive.length > 0 && (
+                <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '20px', marginBottom: '20px' }}>
+                  <h4 style={{ color: '#e2e8f0', marginBottom: '15px' }}>🔥 Conversaciones Más Costosas</h4>
+                  <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                    {costs.expensive.slice(0, 5).map((conv, i) => (
+                      <div key={conv.id} style={{ 
+                        background: 'rgba(255,255,255,0.05)', 
+                        borderRadius: '6px', 
+                        padding: '12px', 
+                        marginBottom: '8px',
+                        border: '1px solid rgba(255,255,255,0.1)'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ color: '#fbbf24', fontWeight: 600 }}>#{i + 1} - ${conv.cost.toFixed(6)}</span>
+                          <span style={{ color: '#94a3b8', fontSize: '0.85em' }}>
+                            {new Date(conv.created_at).toLocaleString()}
+                          </span>
+                        </div>
+                        <div style={{ color: '#e2e8f0', fontSize: '0.9em', marginBottom: '6px' }}>
+                          {conv.text.length > 100 ? conv.text.substring(0, 100) + '...' : conv.text}
+                        </div>
+                        <div style={{ color: '#94a3b8', fontSize: '0.8em' }}>
+                          Tokens: {conv.tokens_in} in / {conv.tokens_out} out
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Costos por Hora */}
+              {costs.hourly && costs.hourly.length > 0 && (
+                <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '20px' }}>
+                  <h4 style={{ color: '#e2e8f0', marginBottom: '15px' }}>📈 Costos por Hora (Últimas 24h)</h4>
+                  <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                    {costs.hourly.slice(0, 12).map((hour, i) => (
+                      <div key={hour.hour} style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        padding: '8px 12px',
+                        background: i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent',
+                        borderRadius: '4px'
+                      }}>
+                        <span style={{ color: '#e2e8f0', fontSize: '0.9em' }}>
+                          {new Date(hour.hour).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ color: '#4ade80', fontWeight: 600 }}>${hour.cost?.toFixed(6) || '0.000000'}</div>
+                          <div style={{ color: '#94a3b8', fontSize: '0.8em' }}>{hour.interactions} interacciones</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+              <div style={{ fontSize: '3em', marginBottom: '10px' }}>📊</div>
+              <div>Cargando datos de costos...</div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Tab: PIPELINE VISUALIZATION */}
       {activeTab === 'pipeline' && (
         <div style={{ background: 'rgba(30, 41, 59, 0.5)', borderRadius: '12px', padding: '20px' }}>

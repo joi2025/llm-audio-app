@@ -1,43 +1,43 @@
 package com.llmaudio.app.data.store
 
-import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val TAG = "ApiKeyStore"
-
-// Define DataStore at top-level (only once per app)
-private val Context.dataStore by preferencesDataStore(name = "settings")
+private const val API_KEY_PREF = "api_key"
 
 @Singleton
 class ApiKeyStore @Inject constructor(
-    @ApplicationContext private val context: Context
+    private val encryptedPrefs: SharedPreferences
 ) {
-    private object Keys {
-        val API_KEY: Preferences.Key<String> = stringPreferencesKey("api_key")
+    private val _apiKeyFlow = MutableStateFlow(getCurrentApiKey())
+    
+    val apiKeyFlow: Flow<String> = _apiKeyFlow.distinctUntilChanged()
+
+    private fun getCurrentApiKey(): String {
+        return encryptedPrefs.getString(API_KEY_PREF, "") ?: ""
     }
 
-    val apiKeyFlow: Flow<String> = context.dataStore.data
-        .map { prefs -> prefs[Keys.API_KEY] ?: "" }
-        .distinctUntilChanged()
-
     suspend fun setApiKey(value: String) {
-        Log.d(TAG, "Saving API key (len=${value.length})")
-        context.dataStore.edit { prefs ->
-            prefs[Keys.API_KEY] = value
-        }
+        Log.d(TAG, "Saving encrypted API key (len=${value.length})")
+        
+        // Store in encrypted preferences
+        encryptedPrefs.edit()
+            .putString(API_KEY_PREF, value)
+            .apply()
+        
+        // Update flow
+        _apiKeyFlow.value = value
+        
+        // Verify storage
         val roundtrip = getOnce()
-        Log.d(TAG, "Roundtrip key len=${roundtrip.length}")
+        Log.d(TAG, "Encrypted roundtrip key len=${roundtrip.length}")
     }
 
     suspend fun getOnce(): String {
@@ -45,9 +45,16 @@ class ApiKeyStore @Inject constructor(
     }
 
     suspend fun clear() {
-        context.dataStore.edit { prefs ->
-            prefs.remove(Keys.API_KEY)
-        }
-        Log.d(TAG, "API key cleared")
+        Log.d(TAG, "Clearing encrypted API key")
+        
+        // Remove from encrypted preferences
+        encryptedPrefs.edit()
+            .remove(API_KEY_PREF)
+            .apply()
+        
+        // Update flow
+        _apiKeyFlow.value = ""
+        
+        Log.d(TAG, "Encrypted API key cleared")
     }
 }

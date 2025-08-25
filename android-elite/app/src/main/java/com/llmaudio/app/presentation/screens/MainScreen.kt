@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,6 +41,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun MainScreen(
     onNavigateToHistory: () -> Unit = {},
+    onNavigateToAdmin: () -> Unit = {},
     viewModel: VoicePipelineViewModel = hiltViewModel()
 ) {
     val voiceState by viewModel.voiceState.collectAsState()
@@ -77,12 +79,26 @@ fun MainScreen(
                 tint = Color.White.copy(alpha = 0.7f)
             )
         }
+        // Admin button
+        IconButton(
+            onClick = onNavigateToAdmin,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 16.dp, end = 16.dp)
+        ) {
+            Icon(
+                Icons.Default.AdminPanelSettings,
+                contentDescription = "Admin Panel",
+                tint = Color.White.copy(alpha = 0.7f)
+            )
+        }
+        
         // Settings button
         IconButton(
             onClick = { showSettings = true },
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(16.dp)
+                .padding(top = 60.dp, end = 16.dp)
         ) {
             Icon(
                 Icons.Default.Settings,
@@ -169,8 +185,12 @@ fun MainScreen(
                         is VoicePipelineViewModel.VoiceState.Listening -> "Escuchando..."
                         is VoicePipelineViewModel.VoiceState.Processing -> "Procesando..."
                         is VoicePipelineViewModel.VoiceState.Speaking -> "Hablando..."
+                        is VoicePipelineViewModel.VoiceState.Error -> (voiceState as VoicePipelineViewModel.VoiceState.Error).message
                     },
-                    color = Color.White.copy(alpha = 0.7f),
+                    color = when (voiceState) {
+                        is VoicePipelineViewModel.VoiceState.Error -> Color.Red.copy(alpha = 0.8f)
+                        else -> Color.White.copy(alpha = 0.7f)
+                    },
                     fontSize = 16.sp
                 )
             }

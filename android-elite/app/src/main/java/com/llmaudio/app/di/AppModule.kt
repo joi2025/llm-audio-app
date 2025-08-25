@@ -1,13 +1,19 @@
 package com.llmaudio.app.di
 
 import android.content.Context
+import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.llmaudio.app.data.api.OpenAiService
 import com.llmaudio.app.data.network.ApiKeyInterceptor
 import com.llmaudio.app.data.store.ApiKeyStore
 import com.llmaudio.app.domain.audio.AudioPlayer
 import com.llmaudio.app.data.db.AppDatabase
 import com.llmaudio.app.data.db.MessageDao
+import com.llmaudio.app.data.db.UsageStatsDao
 import com.llmaudio.app.data.repository.MessageRepository
+import com.llmaudio.app.data.repository.ConsentRepository
+import com.llmaudio.app.data.repository.UsageRepository
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -39,6 +45,10 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideContext(@ApplicationContext context: Context): Context = context
+
+    @Provides
+    @Singleton
     fun provideMessageDao(db: AppDatabase): MessageDao = db.messageDao()
 
     @Provides
@@ -47,8 +57,21 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideUsageStatsDao(db: AppDatabase): UsageStatsDao = db.usageStatsDao()
+
+    @Provides
+    @Singleton
+    fun provideUsageRepository(dao: UsageStatsDao): UsageRepository = UsageRepository(dao)
+
+    @Provides
+    @Singleton
+    fun provideConsentRepository(encryptedPrefs: SharedPreferences): ConsentRepository = ConsentRepository(encryptedPrefs)
+
+    @Provides
+    @Singleton
     fun provideOkHttpClient(
-        apiKeyInterceptor: ApiKeyInterceptor
+        apiKeyInterceptor: ApiKeyInterceptor,
+        context: Context
     ): OkHttpClient {
         val loggingInterceptor = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
@@ -79,5 +102,28 @@ object AppModule {
     @Singleton
     fun provideAudioPlayer(): AudioPlayer {
         return AudioPlayer()
+    }
+
+    @Provides
+    @Singleton
+    fun provideMasterKey(@ApplicationContext context: Context): MasterKey {
+        return MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideEncryptedSharedPreferences(
+        @ApplicationContext context: Context,
+        masterKey: MasterKey
+    ): SharedPreferences {
+        return EncryptedSharedPreferences.create(
+            context,
+            "llmaudio_secure_prefs",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
     }
 }

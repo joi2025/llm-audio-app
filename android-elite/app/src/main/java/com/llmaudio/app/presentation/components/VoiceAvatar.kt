@@ -102,6 +102,13 @@ fun VoiceAvatar(
                         audioLevel = audioLevel
                     )
                 }
+
+                is VoicePipelineViewModel.VoiceState.Error -> {
+                    drawErrorState(
+                        color = Color.Red,
+                        scale = idlePulse
+                    )
+                }
             }
         }
     }
@@ -249,5 +256,42 @@ private fun DrawScope.drawSpeakingState(
         color = Color.White.copy(alpha = 0.3f + audioLevel * 0.2f),
         radius = coreRadius * 0.5f,
         center = center
+    )
+}
+
+private fun DrawScope.drawErrorState(color: Color, scale: Float) {
+    val center = Offset(size.width / 2, size.height / 2)
+    val radius = size.minDimension / 3 * scale
+    
+    // Error indicator - pulsing red circle with warning pattern
+    drawCircle(
+        color = color.copy(alpha = 0.2f),
+        radius = radius * 1.5f,
+        center = center
+    )
+    
+    // Main error circle
+    drawCircle(
+        color = color,
+        radius = radius,
+        center = center
+    )
+    
+    // Warning symbol - exclamation mark
+    val symbolHeight = radius * 0.8f
+    val symbolWidth = radius * 0.15f
+    
+    // Exclamation body
+    drawRect(
+        color = Color.White,
+        topLeft = Offset(center.x - symbolWidth / 2, center.y - symbolHeight / 2),
+        size = androidx.compose.ui.geometry.Size(symbolWidth, symbolHeight * 0.7f)
+    )
+    
+    // Exclamation dot
+    drawCircle(
+        color = Color.White,
+        radius = symbolWidth / 2,
+        center = Offset(center.x, center.y + symbolHeight * 0.3f)
     )
 }

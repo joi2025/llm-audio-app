@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.kapt")
     id("com.google.dagger.hilt.android")
+    id("kotlin-parcelize")
 }
 
 android {
@@ -25,13 +26,25 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            buildConfigField("String", "BACKEND_URL", "\"http://192.168.29.31:8001\"")
+            buildConfigField("boolean", "DEBUG_LOGS", "false")
+            // Enable unit test coverage for release builds
+            enableUnitTestCoverage = true
+            // Use debug signing for release builds during development
+            signingConfig = signingConfigs.getByName("debug")
         }
         debug {
             isDebuggable = true
+            isMinifyEnabled = false
+            buildConfigField("String", "BACKEND_URL", "\"http://192.168.29.31:8001\"")
+            buildConfigField("boolean", "DEBUG_LOGS", "true")
+            // Enable unit test coverage for debug builds
+            enableUnitTestCoverage = true
         }
     }
 
@@ -46,6 +59,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
@@ -91,6 +105,9 @@ dependencies {
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     implementation("com.squareup.okhttp3:okhttp-sse:4.12.0")
     
+    // WebSocket client for backend communication
+    implementation("org.java-websocket:Java-WebSocket:1.5.3")
+    
     // JSON Serialization
     implementation("com.google.code.gson:gson:2.10.1")
     
@@ -102,6 +119,9 @@ dependencies {
     // DataStore (Preferences) for API key persistence
     implementation("androidx.datastore:datastore-preferences:1.0.0")
     
+    // Security - EncryptedSharedPreferences for secure API key storage
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    
     // Permissions
     implementation("com.google.accompanist:accompanist-permissions:0.31.1-alpha")
     
@@ -112,14 +132,29 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
     
-    // Testing
+    // Testing - Unit Tests
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation("androidx.arch.core:core-testing:2.2.0")
+    testImplementation("androidx.room:room-testing:2.6.1")
+    testImplementation("com.google.dagger:hilt-android-testing:2.48")
+    kaptTest("com.google.dagger:hilt-compiler:2.48")
+    
+    // Testing - Integration & E2E Tests
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
+    androidTestImplementation("androidx.test:rules:1.5.0")
+    androidTestImplementation("androidx.test:runner:1.5.2")
     androidTestImplementation(platform("androidx.compose:compose-bom:2023.10.01"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("com.google.dagger:hilt-android-testing:2.48")
+    kaptAndroidTest("com.google.dagger:hilt-compiler:2.48")
+    
+    // MockWebServer for E2E API mocking
+    androidTestImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    
+    // Debug Tools
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

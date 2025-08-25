@@ -10,29 +10,118 @@ export default function VoiceCircle({ wsUrl }) {
   const [showPersonalities, setShowPersonalities] = useState(false)
   const [level, setLevel] = useState(0)
   const audioRef = useRef(null)
+  
+  // Audio queue management for sequence-based playback
+  const audioQueueRef = useRef([])
+  const currentlyPlayingRef = useRef(null)
+  const isPlayingRef = useRef(false)
 
   // 🎭 Personality system
   const { personalityData, applyPersonality, getGreeting } = usePersonality()
 
-  const onAudio = useCallback((b64, mime='audio/mpeg') => {
+  // Enhanced audio queue management for sequence-based playback
+  const enqueueAudioChunk = useCallback((audioData, sequenceId, text = '') => {
+    const chunk = {
+      sequenceId,
+      audioData,
+      text,
+      timestamp: Date.now()
+    }
+    
+    // Insert in correct sequence order
+    const queue = audioQueueRef.current
+    let insertIndex = queue.length
+    
+    for (let i = 0; i < queue.length; i++) {
+      if (queue[i].sequenceId > sequenceId) {
+        insertIndex = i
+        break
+      }
+    }
+    
+    queue.splice(insertIndex, 0, chunk)
+    console.debug(`[v2] 🎵 Enqueued audio chunk #${sequenceId} at position ${insertIndex}: "${text.substring(0, 30)}..."`)
+    
+    // Start playback if not already playing
+    if (!isPlayingRef.current) {
+      playNextChunk()
+    }
+  }, [])
+
+  const playNextChunk = useCallback(() => {
+    if (audioQueueRef.current.length === 0) {
+      isPlayingRef.current = false
+      setUiState('idle')
+      console.debug('[v2] ✅ Audio queue empty, returning to idle')
+      return
+    }
+
+    const chunk = audioQueueRef.current.shift()
+    currentlyPlayingRef.current = chunk
+    isPlayingRef.current = true
+    
     try {
-      const b = Uint8Array.from(atob(b64), c => c.charCodeAt(0))
-      const blob = new Blob([b], { type: mime })
+      const b = Uint8Array.from(atob(chunk.audioData), c => c.charCodeAt(0))
+      const blob = new Blob([b], { type: 'audio/mpeg' })
       const url = URL.createObjectURL(blob)
       const el = audioRef.current
+      
       if (el) {
         el.pause()
         el.src && URL.revokeObjectURL(el.src)
         el.src = url
+        
         el.onended = () => {
-          console.debug('[v2] audio playback ended, ready for next interaction')
-          setUiState('idle')
+          console.debug(`[v2] 🔊 Chunk #${chunk.sequenceId} playback ended`)
+          URL.revokeObjectURL(url)
+          currentlyPlayingRef.current = null
+          
+          // Play next chunk in queue
+          setTimeout(playNextChunk, 50) // Small delay for seamless playback
         }
-        el.play().catch(()=>{})
+        
+        el.onerror = () => {
+          console.error(`[v2] ❌ Error playing chunk #${chunk.sequenceId}`)
+          URL.revokeObjectURL(url)
+          currentlyPlayingRef.current = null
+          setTimeout(playNextChunk, 50)
+        }
+        
+        el.play().catch(e => {
+          console.error(`[v2] ❌ Play failed for chunk #${chunk.sequenceId}:`, e)
+          setTimeout(playNextChunk, 50)
+        })
+        
+        console.debug(`[v2] ▶️ Playing chunk #${chunk.sequenceId}: "${chunk.text.substring(0, 30)}..."`)
       }
+      
       setUiState('speaking')
-    } catch {}
+    } catch (e) {
+      console.error(`[v2] ❌ Error processing chunk #${chunk.sequenceId}:`, e)
+      setTimeout(playNextChunk, 50)
+    }
   }, [])
+
+  const clearAudioQueue = useCallback(() => {
+    console.debug('[v2] 🧹 Clearing audio queue')
+    audioQueueRef.current = []
+    currentlyPlayingRef.current = null
+    isPlayingRef.current = false
+    
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.currentTime = 0
+      if (audioRef.current.src) {
+        URL.revokeObjectURL(audioRef.current.src)
+        audioRef.current.src = ''
+      }
+    }
+  }, [])
+
+  // Legacy audio handler for backward compatibility
+  const onAudio = useCallback((b64, mime='audio/mpeg') => {
+    enqueueAudioChunk(b64, Date.now(), 'Legacy audio')
+  }, [enqueueAudioChunk])
 
   // use refs for handlers to avoid re-renders and hook-order mismatches
   const handleWSMessageRef = useRef(() => {})
@@ -54,14 +143,37 @@ export default function VoiceCircle({ wsUrl }) {
       setUiState('speaking')
     }))
     
-    cleanupFunctions.push(addListener('audio', (data) => {
-      console.debug('[v2] 🔊 Audio received')
-      if (audioRef.current && data.audio) {
-        const audioBlob = new Blob([Uint8Array.from(atob(data.audio), c => c.charCodeAt(0))], { type: 'audio/mpeg' })
-        const audioUrl = URL.createObjectURL(audioBlob)
-        audioRef.current.src = audioUrl
-        audioRef.current.play().catch(e => console.error('Audio play error:', e))
+    // Handle new sequence-based audio chunks from parallel TTS
+    cleanupFunctions.push(addListener('audio_chunk', (data) => {
+      console.debug(`[v2] 🎵 Audio chunk #${data.sequence_id} received (${data.tts_ms}ms TTS latency)`)
+      if (data.audio && data.sequence_id !== undefined) {
+        enqueueAudioChunk(data.audio, data.sequence_id, data.text || '')
       }
+    }))
+    
+    // Handle legacy audio events for backward compatibility
+    cleanupFunctions.push(addListener('audio', (data) => {
+      console.debug('[v2] 🔊 Legacy audio received')
+      if (data.audio) {
+        enqueueAudioChunk(data.audio, Date.now(), 'Legacy audio')
+      }
+    }))
+    
+    // Handle first LLM token (ultra-low latency indicator)
+    cleanupFunctions.push(addListener('llm_first_token', (data) => {
+      console.debug(`[v2] ⚡ First LLM token received: "${data.token}"`)
+      setUiState('speaking') // Transition to speaking immediately on first token
+    }))
+    
+    // Handle streaming LLM tokens
+    cleanupFunctions.push(addListener('llm_token', (data) => {
+      // Could update UI with streaming text if desired
+      console.debug(`[v2] 📝 LLM token: "${data.token}"`)
+    }))
+    
+    // Handle TTS chunk errors
+    cleanupFunctions.push(addListener('tts_chunk_error', (data) => {
+      console.error(`[v2] ❌ TTS chunk #${data.sequence_id} failed:`, data.error)
     }))
     
     cleanupFunctions.push(addListener('tts_end', () => {
@@ -116,11 +228,8 @@ export default function VoiceCircle({ wsUrl }) {
     console.debug('[v2] 👆 Tap detected, current state:', uiState, 'listening:', listening)
     
     if (uiState === 'speaking') {
-      console.debug('[v2] 🛑 Interrupting audio playback')
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current.currentTime = 0
-      }
+      console.debug('[v2] 🛑 Interrupting audio playback and clearing queue')
+      clearAudioQueue()
       setUiState('idle')
     } else if (listening) {
       console.debug('[v2] ✋ Manual stop during listening')

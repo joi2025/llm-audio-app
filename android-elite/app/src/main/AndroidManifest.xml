@@ -17,7 +17,14 @@
         android:theme="@style/Theme.LLMAudioApp"
         android:enableOnBackInvokedCallback="true"
         android:hardwareAccelerated="true"
-        android:largeHeap="true">
+        android:largeHeap="true"
+        android:extractNativeLibs="true"
+        android:requestLegacyExternalStorage="false">
+        
+        <!-- Disable MIUI theme system that causes ENOENT errors -->
+        <meta-data android:name="miui.notch.config" android:value="portrait|landscape" />
+        <meta-data android:name="android.max_aspect" android:value="2.4" />
+        <meta-data android:name="miui.theme.disable" android:value="true" />
         
         <activity
             android:name=".presentation.MainActivity"

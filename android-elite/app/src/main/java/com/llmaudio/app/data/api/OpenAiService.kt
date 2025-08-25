@@ -33,6 +33,12 @@ interface OpenAiService {
         @Header("Authorization") authorization: String,
         @Body request: TTSRequest
     ): Call<ResponseBody>
+    
+    @POST("v1/moderations")
+    suspend fun moderateContent(
+        @Header("Authorization") authorization: String,
+        @Body request: ModerationRequest
+    ): ModerationResponse
 }
 
 // Data Models

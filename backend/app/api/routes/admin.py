@@ -7,7 +7,7 @@ import json
 import time
 import requests
 from flask import Blueprint, request, current_app, jsonify
-from ...db import get_settings, set_setting, get_conversations, get_logs, clear_conversations
+from ...db import get_settings, set_setting, get_conversations, get_logs, clear_conversations, get_cost_analytics
 
 # Helpers estandarizados para respuestas consistentes
 def ok(data=None, message="Success"):
@@ -193,6 +193,16 @@ def restart_system():
         }, "System configuration restarted successfully")
     except Exception as e:
         return error(f"Error restarting system: {str(e)}", code='restart_error', status=500)
+
+@admin_bp.route('/api/admin/costs', methods=['GET'])
+def get_costs_api():
+    """Obtener análisis de costos del sistema - Nueva implementación"""
+    try:
+        hours = request.args.get('hours', 24, type=int)
+        cost_data = get_cost_analytics(hours)
+        return ok(cost_data, f"Retrieved cost analytics for last {hours} hours")
+    except Exception as e:
+        return error(f"Error retrieving cost analytics: {str(e)}", code='costs_get_error', status=500)
 
 @admin_bp.route('/api/admin/system/restart', methods=['POST'])
 def restart_system_compat():

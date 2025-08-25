@@ -11,19 +11,16 @@ Características principales:
 - Logging completo de interacciones
 """
 import base64
-import io
+import os
 import json
 import time
-import threading
-from collections import deque, defaultdict
-from typing import Deque, Dict, Any, Tuple
-
 import requests
-from flask import current_app, request
-from flask_socketio import emit, disconnect
-
-from ..db import add_message, add_log, get_settings
-from .audio_pipeline import AudioPipeline
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Dict, Any, List, Generator, Optional, Tuple
+from flask import current_app
+from flask_socketio import emit
+from ...db import add_message, add_log, get_settings
 
 
 # -----------------------------
@@ -33,18 +30,172 @@ from .audio_pipeline import AudioPipeline
 def _approx_tokens(text: str) -> int:
     return max(1, int(len(text) / 4))
 
+def process_tts_chunk(text: str, sequence_id: int, api_key: str, voice: str, sid: str) -> dict:
+    """
+    Procesa un chunk de TTS en paralelo usando ThreadPoolExecutor
+    Retorna dict con audio en base64 y metadatos
+    """
+    try:
+        import requests
+        
+        start_time = time.time()
+        
+        # Llamada a OpenAI TTS API
+        response = requests.post(
+            "https://api.openai.com/v1/audio/speech",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "tts-1",
+                "input": text,
+                "voice": voice,
+                "response_format": "mp3"
+            },
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            audio_data = response.content
+            audio_b64 = base64.b64encode(audio_data).decode('utf-8')
+            
+            latency_ms = int((time.time() - start_time) * 1000)
+            
+            print(f"[TTS] Chunk #{sequence_id} completed in {latency_ms}ms ({len(text)} chars)")
+            
+            return {
+                'success': True,
+                'audio': audio_b64,
+                'sequence_id': sequence_id,
+                'text': text[:50] + "..." if len(text) > 50 else text,
+                'latency_ms': latency_ms,
+                'error': None
+            }
+        else:
+            error_msg = f"TTS API error: {response.status_code}"
+            print(f"[TTS] Chunk #{sequence_id} failed: {error_msg}")
+            
+            return {
+                'success': False,
+                'audio': None,
+                'sequence_id': sequence_id,
+                'text': text[:50] + "..." if len(text) > 50 else text,
+                'latency_ms': None,
+                'error': error_msg
+            }
+            
+    except Exception as e:
+        error_msg = f"TTS processing error: {str(e)}"
+        print(f"[TTS] Chunk #{sequence_id} exception: {error_msg}")
+        
+        return {
+            'success': False,
+            'audio': None,
+            'sequence_id': sequence_id,
+            'text': text[:50] + "..." if len(text) > 50 else text,
+            'latency_ms': None,
+            'error': error_msg
+        }
 
-def _estimate_cost(settings: Dict[str, Any], tokens_in: int, tokens_out: int) -> float:
-    tier = (settings.get('tier') or 'medium').lower()
-    price_map = {
-        'low': (0.05, 0.1),
-        'medium_low': (0.08, 0.16),
-        'medium': (0.15, 0.6),
-        'medium_high': (0.3, 1.2),
-        'high': (0.6, 2.4),
-    }
-    pin, pout = price_map.get(tier, price_map['medium'])
-    return round((tokens_in / 1000.0) * pin + (tokens_out / 1000.0) * pout, 6)
+def is_sentence_complete(buffer: str, token: str) -> bool:
+    """
+    Detecta si una oración está completa basándose en delimitadores
+    Lógica mejorada para evitar falsos positivos
+    """
+    if not buffer or not token:
+        return False
+    
+    # Delimitadores de fin de oración
+    sentence_endings = ['.', '!', '?', '\n']
+    
+    # Verificar si el token actual es un delimitador
+    if token in sentence_endings:
+        # Evitar falsos positivos con abreviaciones comunes
+        if token == '.':
+            # Lista de abreviaciones comunes que no terminan oración
+            abbreviations = ['Dr', 'Mr', 'Mrs', 'Ms', 'Prof', 'Sr', 'Jr', 'vs', 'etc', 'i.e', 'e.g']
+            words = buffer.strip().split()
+            if words and any(words[-1].startswith(abbr) for abbr in abbreviations):
+                return False
+        
+        # Verificar longitud mínima
+        clean_buffer = buffer.strip()
+        return len(clean_buffer) >= 10  # Mínimo 10 caracteres para considerar oración
+    
+    return False
+
+
+def moderate_content(text: str, api_key: str, content_type: str = "input") -> Tuple[bool, Optional[str]]:
+    """
+    Modera contenido usando OpenAI Moderation API
+    
+    Args:
+        text: Texto a moderar
+        api_key: API key de OpenAI
+        content_type: "input" o "output" para logging
+    
+    Returns:
+        Tuple[bool, Optional[str]]: (is_safe, reason_if_flagged)
+    """
+    try:
+        response = requests.post(
+            "https://api.openai.com/v1/moderations",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            json={"input": text},
+            timeout=10
+        )
+        
+        if response.status_code != 200:
+            add_log('ERROR', f'Moderation API error: {response.status_code}')
+            return True, None  # Fail open - allow content if moderation fails
+        
+        result = response.json()
+        moderation = result.get('results', [{}])[0]
+        
+        if moderation.get('flagged', False):
+            categories = moderation.get('categories', {})
+            flagged_categories = [cat for cat, flagged in categories.items() if flagged]
+            reason = f"Flagged categories: {', '.join(flagged_categories)}"
+            
+            add_log('MODERATION', f'{content_type.upper()} blocked: {reason} - Text length: {len(text)}')
+            return False, reason
+        
+        return True, None
+        
+    except Exception as e:
+        add_log('ERROR', f'Moderation check failed: {e}')
+        return True, None  # Fail open
+
+
+def _estimate_cost(tokens_in: int, tokens_out: int, tts_chars: int = 0) -> float:
+    """
+    Estima el costo de una interacción basándose en precios públicos de OpenAI (Diciembre 2024)
+    
+    Args:
+        tokens_in: Tokens de entrada (STT + prompt)
+        tokens_out: Tokens de salida (LLM response)
+        tts_chars: Caracteres para TTS
+    
+    Returns:
+        Costo total estimado en USD
+    """
+    # Precios OpenAI por 1M tokens (USD)
+    GPT4_INPUT_PRICE = 2.50   # $2.50 per 1M input tokens
+    GPT4_OUTPUT_PRICE = 10.00 # $10.00 per 1M output tokens
+    TTS_PRICE = 15.00         # $15.00 per 1M characters
+    
+    # Calcular costos
+    input_cost = (tokens_in / 1_000_000) * GPT4_INPUT_PRICE
+    output_cost = (tokens_out / 1_000_000) * GPT4_OUTPUT_PRICE
+    tts_cost = (tts_chars / 1_000_000) * TTS_PRICE
+    
+    total_cost = input_cost + output_cost + tts_cost
+    
+    return round(total_cost, 6)  # 6 decimales para precisión en microcents
 
 
 def _select_chat_model(cfg: Dict[str, Any], settings: Dict[str, Any]) -> str:
@@ -166,6 +317,108 @@ class TokenBucket:
                 return True
             return False
 
+
+# Global state management
+client_metrics: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
+    'connected_at': time.time(),
+    'requests': 0,
+    'last_request': 0,
+    'stt_ms': 0,
+    'llm_ms': 0,
+    'tts_ms': 0,
+    'first_token_ms': 0,
+    'interruptions': 0,
+    'last_error': None
+})
+
+# Rate limiting per client
+rate_limits: Dict[str, Deque[float]] = defaultdict(lambda: deque(maxlen=10))
+RATE_LIMIT_WINDOW = 60  # seconds
+MAX_REQUESTS_PER_WINDOW = 30
+
+# ThreadPoolExecutor for parallel TTS processing
+tts_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="TTS-Worker")
+
+# Sentence detection configuration
+MIN_SENTENCE_LENGTH = 10
+SENTENCE_ENDINGS = {'.', '!', '?', '。', '！', '？'}
+SENTENCE_SEPARATORS = {'\n', '\r'}
+COMMON_ABBREVIATIONS = {
+    'Dr', 'Mr', 'Mrs', 'Ms', 'Prof', 'Inc', 'Ltd', 'Corp', 'Co',
+    'etc', 'vs', 'e.g', 'i.e', 'cf', 'St', 'Ave', 'Blvd'
+}
+
+def is_sentence_complete(current_text: str, last_token: str) -> bool:
+    """Enhanced sentence completion detection with support for multiple languages"""
+    # Check if the last token contains sentence endings
+    has_ending = any(char in SENTENCE_ENDINGS for char in last_token)
+    has_separator = any(char in SENTENCE_SEPARATORS for char in last_token)
+    
+    if not has_ending and not has_separator:
+        return False
+    
+    # Additional validation to avoid false positives
+    trimmed_text = current_text.strip()
+    
+    # Skip very short fragments
+    if len(trimmed_text) < MIN_SENTENCE_LENGTH:
+        return False
+    
+    # Skip if it looks like an abbreviation (e.g., "Dr.", "etc.")
+    if has_ending and is_likely_abbreviation(trimmed_text):
+        return False
+    
+    # Skip if it's just a number with decimal point
+    if has_ending and re.match(r'.*\d+\.\d*$', trimmed_text):
+        return False
+    
+    return True
+
+def is_likely_abbreviation(text: str) -> bool:
+    """Detects common abbreviations to avoid premature sentence breaks"""
+    words = text.strip().split()
+    if not words:
+        return False
+    
+    last_word = words[-1].rstrip('.')
+    
+    return (last_word in COMMON_ABBREVIATIONS or 
+            (len(last_word) <= 3 and last_word.isupper()))
+
+def process_tts_chunk(base_url: str, api_key: str, tts_model: str, voice: str, 
+                     sentence: str, sequence_id: int, sid: str) -> Dict[str, Any]:
+    """Process a single TTS chunk in parallel"""
+    try:
+        t0_tts = time.time()
+        audio_mp3 = _http_tts(base_url, api_key, tts_model, voice, sentence)
+        tts_time = int((time.time() - t0_tts) * 1000)
+        
+        if audio_mp3:
+            b64_audio = base64.b64encode(audio_mp3).decode('ascii')
+            return {
+                'success': True,
+                'audio': b64_audio,
+                'sequence_id': sequence_id,
+                'text': sentence,
+                'tts_ms': tts_time,
+                'sid': sid
+            }
+        else:
+            return {
+                'success': False,
+                'sequence_id': sequence_id,
+                'text': sentence,
+                'error': 'Empty audio response',
+                'sid': sid
+            }
+    except Exception as e:
+        return {
+            'success': False,
+            'sequence_id': sequence_id,
+            'text': sentence,
+            'error': str(e),
+            'sid': sid
+        }
 
 def init_unified(socketio):
     # Per-connection state maps by sid
@@ -296,7 +549,7 @@ def init_unified(socketio):
             emit('tts_end', {})
             return
 
-        # STT
+        # STT - Speech to Text
         try:
             t0 = time.time()
             text = _http_stt(base_url, api_key, audio_bytes).strip()
@@ -304,6 +557,32 @@ def init_unified(socketio):
             if not text:
                 emit('error', {'stage': 'stt', 'message': 'No speech detected'})
                 return
+            
+            # Moderación de entrada antes de LLM
+            is_safe, reason = moderate_content(text, api_key, "input")
+            if not is_safe:
+                safe_response = "Lo siento, no puedo ayudarte con esa solicitud. Por favor, reformula tu pregunta de manera apropiada."
+                emit('result_stt', {'transcription': text, 'from': 'user'})
+                emit('result_llm', {'transcription': safe_response, 'from': 'assistant'})
+                
+                # Generar TTS para la respuesta segura
+                try:
+                    voice, tts_model = _select_tts(cfg, settings)
+                    audio_mp3 = _http_tts(base_url, api_key, tts_model, voice, safe_response)
+                    if audio_mp3:
+                        b64_audio = base64.b64encode(audio_mp3).decode('ascii')
+                        emit('audio_chunk', {
+                            'audio': b64_audio,
+                            'sequence_id': 1,
+                            'is_final': True
+                        })
+                except Exception as e:
+                    add_log('ERROR', f'TTS for moderated content failed: {e}')
+                
+                add_message('user', text, tokens_in=_approx_tokens(text))
+                add_message('assistant', safe_response, tokens_out=_approx_tokens(safe_response))
+                return
+            
             emit('result_stt', {'transcription': text, 'from': 'user'})
             add_message('user', text, tokens_in=_approx_tokens(text))
         except Exception as e:
@@ -327,14 +606,17 @@ def init_unified(socketio):
             user_text = text if system_prompt or not pref_short else f"{text}\n\n[Responde de forma concisa y natural para conversación de voz]"
             messages.append({'role': 'user', 'content': user_text})
 
-            # STREAMING LLM + TTS PARALELO - INGENIERÍA CRÍTICA
+            # STREAMING LLM + TTS PARALELO CON ThreadPoolExecutor
             voice, tts_model = _select_tts(cfg, settings)
             t0_llm = time.time()
             
             accumulated_text = ""
             sentence_buffer = ""
             first_chunk_sent = False
-            tts_tasks = []  # Para tracking de tareas TTS paralelas
+            sequence_id = 0
+            tts_futures = []  # Para tracking de futures TTS paralelos
+            
+            print(f"[websocket_unified] Starting parallel TTS pipeline for {sid}")
             
             # Stream LLM tokens y procesar TTS inmediatamente
             for token in _http_chat_streaming(base_url, api_key, model, messages, max_tokens, temperature):
@@ -353,78 +635,132 @@ def init_unified(socketio):
                 # Emitir tokens en streaming
                 emit('llm_token', {'token': token, 'accumulated': accumulated_text})
                 
-                # Detectar final de oración para TTS inmediato
-                if token in ['.', '!', '?', '\n'] or len(sentence_buffer.strip()) > 100:
+                # Moderación de salida antes de TTS
+                sentence = sentence_buffer.strip()
+                is_output_safe, output_reason = moderate_content(sentence, api_key, "output")
+                if not is_output_safe:
+                    print(f"[websocket_unified] Output blocked for {sid}: {output_reason}")
+                    add_log('WARN', f'Content moderation blocked output: {output_reason} - Text: "{sentence[:50]}..."')
+                    
+                    # Reemplazar con respuesta segura
+                    sentence = "Disculpa, no puedo completar esa respuesta. ¿Hay algo más en lo que pueda ayudarte?"
+                
+                # Detectar final de oración con lógica mejorada
+                if is_sentence_complete(sentence_buffer, token):
                     sentence_to_speak = sentence_buffer.strip()
-                    if sentence_to_speak:
-                        # CRÍTICO: Iniciar TTS inmediatamente sin esperar más tokens
-                        def async_tts(sentence, chunk_id):
-                            try:
-                                t0_tts = time.time()
-                                audio_mp3 = _http_tts(base_url, api_key, tts_model, voice, sentence)
-                                tts_time = int((time.time() - t0_tts) * 1000)
-                                
-                                if audio_mp3:
-                                    b64_audio = base64.b64encode(audio_mp3).decode('ascii')
-                                    emit('audio_chunk', {
-                                        'audio': b64_audio, 
-                                        'chunk_id': chunk_id,
-                                        'text': sentence,
-                                        'tts_ms': tts_time
-                                    })
-                                else:
-                                    emit('tts_chunk_error', {'chunk_id': chunk_id, 'text': sentence})
-                            except Exception as e:
-                                print(f"[websocket_unified] Async TTS error: {e}")
-                                emit('tts_chunk_error', {'chunk_id': len(tts_tasks), 'error': str(e)})
+                    if len(sentence_to_speak) >= MIN_SENTENCE_LENGTH:
+                        # Moderación final de la oración completa
+                        is_safe, block_reason = moderate_content(sentence_to_speak, api_key, "output")
+                        if not is_safe:
+                            print(f"[websocket_unified] Sentence blocked for {sid}: {block_reason}")
+                            add_log('WARN', f'Content moderation blocked sentence: {block_reason}')
+                            sentence_to_speak = "Disculpa, no puedo completar esa respuesta."
+                            
                         
-                        # Ejecutar TTS en thread separado para no bloquear streaming
-                        chunk_id = len(tts_tasks)
-                        tts_thread = threading.Thread(target=async_tts, args=(sentence_to_speak, chunk_id))
-                        tts_thread.daemon = True
-                        tts_thread.start()
-                        tts_tasks.append(tts_thread)
+                        # **STREAMING PARALELO CRÍTICO** - Lanzar TTS inmediatamente
+                        sequence_id = len(tts_futures) + 1
+                        print(f"[websocket_unified] Launching TTS for sentence #{sequence_id}: '{sentence_to_speak[:50]}...'")
                         
-                        sentence_buffer = ""  # Reset buffer
+                        # Enviar TTS task al ThreadPoolExecutor
+                        future = tts_executor.submit(
+                            process_tts_chunk,
+                            sentence_to_speak,
+                            sequence_id,
+                            api_key,
+                            voice,
+                            sid
+                        )
+                        tts_futures.append(future)
+                        
+                        # Resetear buffer para próxima oración
+                        sentence_buffer = ""
             
             # Procesar último fragmento si queda algo
-            if sentence_buffer.strip():
-                def final_tts():
-                    try:
-                        audio_mp3 = _http_tts(base_url, api_key, tts_model, voice, sentence_buffer.strip())
-                        if audio_mp3:
-                            b64_audio = base64.b64encode(audio_mp3).decode('ascii')
-                            emit('audio_chunk', {
-                                'audio': b64_audio, 
-                                'chunk_id': len(tts_tasks),
-                                'text': sentence_buffer.strip(),
-                                'final': True
-                            })
-                    except Exception as e:
-                        print(f"[websocket_unified] Final TTS error: {e}")
+            remaining_text = sentence_buffer.strip()
+            if len(remaining_text) >= MIN_SENTENCE_LENGTH:
+                # Moderación final del fragmento restante
+                is_safe, safe_remaining, block_reason = moderate_llm_output(remaining_text, api_key)
+                if not is_safe:
+                    print(f"[websocket_unified] Final fragment blocked for {sid}: {block_reason}")
+                    add_log('WARN', f'Content moderation blocked final fragment: {block_reason}')
+                    
+                    # Registrar evento de moderación
+                    log_moderation_event('blocked', 'output', block_reason, remaining_text, safe_remaining, user_id=sid)
+                    remaining_text = safe_remaining
                 
-                final_thread = threading.Thread(target=final_tts)
-                final_thread.daemon = True
-                final_thread.start()
-                tts_tasks.append(final_thread)
-            
-            # Métricas finales
-            metrics[sid]['llm_ms'] = int((time.time() - t0_llm) * 1000)
-            metrics[sid]['tts_chunks'] = len(tts_tasks)
-            
-            # Emitir respuesta completa y finalizar
-            emit('result_llm', {'transcription': accumulated_text, 'from': 'assistant'})
-            add_message('assistant', accumulated_text, tokens_in=_approx_tokens(text), tokens_out=_approx_tokens(accumulated_text), cost=_estimate_cost(settings, _approx_tokens(text), _approx_tokens(accumulated_text)))
-            
-            # Señal de finalización después de un breve delay para permitir que terminen los TTS
-            def signal_completion():
-                time.sleep(0.5)  # Pequeño delay para TTS chunks
-                emit('tts_end', {'total_chunks': len(tts_tasks)})
-            
-            completion_thread = threading.Thread(target=signal_completion)
-            completion_thread.daemon = True
-            completion_thread.start()
-            
+                # Lanzar TTS para fragmento final
+                final_sequence_id = len(tts_futures) + 1
+                print(f"[websocket_unified] Launching final TTS chunk #{final_sequence_id}")
+                
+                future = tts_executor.submit(
+                    process_tts_chunk,
+                    remaining_text,
+                    final_sequence_id,
+                    api_key,
+                    voice,
+                    sid
+                )
+                tts_futures.append(future)
+                
+                # Procesar resultados TTS conforme van completándose
+                def handle_tts_results():
+                    try:
+                        for future in as_completed(tts_futures, timeout=30):
+                            result = future.result()
+                            
+                            if result['success']:
+                                emit('audio_chunk', {
+                                    'audio': result['audio'],
+                                    'sequence_id': result['sequence_id'],
+                                    'text': result['text'],
+                                    'tts_ms': result['tts_ms']
+                                })
+                                print(f"[websocket_unified] TTS chunk #{result['sequence_id']} completed in {result['tts_ms']}ms")
+                            else:
+                                emit('tts_chunk_error', {
+                                    'sequence_id': result['sequence_id'],
+                                    'text': result['text'],
+                                    'error': result['error']
+                                })
+                                print(f"[websocket_unified] TTS chunk #{result['sequence_id']} failed: {result['error']}")
+                        
+                        # Señalar fin de TTS
+                        emit('tts_end', {'total_chunks': len(tts_futures)})
+                        
+                    except Exception as e:
+                        print(f"[websocket_unified] Error handling TTS results: {e}")
+                        emit('tts_error', {'error': str(e)})
+                
+                # Ejecutar manejo de resultados en thread separado
+                results_thread = threading.Thread(target=handle_tts_results)
+                results_thread.daemon = True
+                results_thread.start()
+                
+                # Métricas finales
+                metrics[sid]['llm_ms'] = int((time.time() - t0_llm) * 1000)
+                metrics[sid]['tts_chunks'] = len(tts_futures)
+                
+                # Calcular y registrar costos completos del pipeline
+                tokens_in = _approx_tokens(text)
+                tokens_out = _approx_tokens(accumulated_text)
+                tts_chars = len(accumulated_text)
+                total_cost = _estimate_cost(tokens_in, tokens_out, tts_chars)
+                
+                print(f"[websocket_unified] Pipeline cost: ${total_cost:.6f} (in:{tokens_in}t, out:{tokens_out}t, tts:{tts_chars}c)")
+                
+                # Emitir respuesta completa y finalizar
+                emit('result_llm', {'transcription': accumulated_text, 'from': 'assistant'})
+                add_message('assistant', accumulated_text, tokens_in=tokens_in, tokens_out=tokens_out, cost=total_cost)
+                
+                # Señal de finalización después de un breve delay para permitir que terminen los TTS
+                def signal_completion():
+                    time.sleep(0.5)  # Pequeño delay para TTS chunks
+                    emit('pipeline_complete', {'total_chunks': len(tts_futures)})
+                
+                completion_thread = threading.Thread(target=signal_completion)
+                completion_thread.daemon = True
+                completion_thread.start()
+                
         except Exception as e:
             metrics[sid]['last_error'] = f'Streaming Pipeline: {e}'
             emit('error', {'stage': 'streaming', 'message': 'Streaming pipeline failed'})

@@ -1,7 +1,15 @@
-# Android Build Guide - LLM Audio App
+# Android Elite - LLM Audio App
 
 ## Overview
-This guide covers building and deploying the React+Vite voice assistant app as an Android APK using Capacitor.
+**android-elite** is the unified, production-ready native Android implementation of the LLM Audio App. This is the sole Android project after consolidating and migrating from legacy Android directories.
+
+## 🏗️ Architecture
+**android-elite** - Unified native Android implementation:
+- **Language**: Kotlin with Jetpack Compose UI
+- **Architecture**: MVVM + Hilt DI + Repository Pattern + StateFlow
+- **Features**: Native WebSocket, Real-time metrics, AdminPro panel, Privacy consent
+- **Security**: EncryptedSharedPreferences, Content moderation, Privacy-first design
+- **Performance**: Native VAD, Streaming LLM, Predictive TTS, Sub-second latency
 
 ## Prerequisites
 - **Android Studio** with bundled JDK
@@ -39,64 +47,33 @@ Via Android Studio SDK Manager:
 
 ## Build Process
 
-### 1. Build Frontend
+### 1. Open Project in Android Studio
 ```bash
-cd frontend
-npm run build
+cd android-elite
+# Open in Android Studio or use command line
 ```
 
-### 2. Create/Update Android Wrapper
+### 2. Configure Backend URL
+Edit `app/build.gradle.kts` to set your backend IP:
+```kotlin
+buildConfigField("String", "BACKEND_URL", "\"http://192.168.x.x:8001\"")
+```
+
+### 3. Build APK
 ```bash
-# First time only - create Capacitor Android project
-npx @capacitor/cli create llm-audio-app-android com.joi2025.llmaudioapp "LLM Audio App"
-cd llm-audio-app-android
-npm install @capacitor/android @capacitor/core
+# Debug build
+./gradlew assembleDebug
 
-# Copy built frontend to wrapper
-robocopy ..\frontend\dist web /E
-
-# Sync with Capacitor
-npx cap add android
-npx cap copy android
+# Release build
+./gradlew assembleRelease
 ```
 
-### 3. Configure Android Native Layer
-
-#### AndroidManifest.xml
-```xml
-<uses-permission android:name="android.permission.INTERNET" />
-<uses-permission android:name="android.permission.RECORD_AUDIO" />
-<uses-permission android:name="android.permission.WAKE_LOCK" />
-
-<application
-    android:usesCleartextTraffic="true"
-    android:networkSecurityConfig="@xml/network_security_config">
-```
-
-#### MainActivity.java
-```java
-@Override
-protected void onCreate(Bundle savedInstanceState) {
-    super.onCreate(savedInstanceState);
-    
-    // Enable TTS autoplay without user gesture
-    if (getBridge() != null && getBridge().getWebView() != null) {
-        getBridge().getWebView().getSettings().setMediaPlaybackRequiresUserGesture(false);
-    }
-    
-    // Keep screen on during interaction
-    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-    
-    // Audio focus management
-    audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
-}
-```
-
-### 4. Build APK
-```bash
-cd android
-gradlew.bat assembleDebug
-```
+### 4. Key Components
+- **MainActivity.kt**: Main entry point with privacy consent flow
+- **AdminProScreen.kt**: Advanced admin panel with real-time metrics
+- **VoicePipelineViewModel.kt**: Core voice processing logic
+- **WebSocketRepository.kt**: Native WebSocket client with auto-reconnect
+- **MetricsRepository.kt**: Real-time performance metrics collection
 
 ## Installation
 
@@ -106,10 +83,10 @@ gradlew.bat assembleDebug
 "%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe" devices
 
 # Install APK
-"%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe" install -r -t --user 0 "android\app\build\outputs\apk\debug\app-debug.apk"
+"%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe" install -r -t --user 0 "android-elite\app\build\outputs\apk\debug\app-debug.apk"
 
 # Launch app
-"%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe" shell monkey -p com.joi2025.llmaudioapp -c android.intent.category.LAUNCHER 1
+"%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe" shell monkey -p com.llmaudio.app -c android.intent.category.LAUNCHER 1
 ```
 
 ### Device Configuration

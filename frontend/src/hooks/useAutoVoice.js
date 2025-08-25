@@ -2,6 +2,95 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import useMicVAD from './useMicVAD'
 
 /**
+ * Audio chunk queue for seamless playback with sequence ordering
+ */
+class AudioChunkQueue {
+  constructor() {
+    this.chunks = new Map() // sequence_id -> audio_data
+    this.expectedSequence = 1
+    this.isPlaying = false
+    this.currentAudio = null
+  }
+
+  enqueue(sequenceId, audioData) {
+    console.log(`🎵 [AudioQueue] Enqueuing chunk #${sequenceId}`)
+    this.chunks.set(sequenceId, audioData)
+    this.processQueue()
+  }
+
+  async processQueue() {
+    if (this.isPlaying) return
+
+    // Play chunks in sequence order
+    while (this.chunks.has(this.expectedSequence)) {
+      const audioData = this.chunks.get(this.expectedSequence)
+      this.chunks.delete(this.expectedSequence)
+      
+      console.log(`🔊 [AudioQueue] Playing chunk #${this.expectedSequence}`)
+      await this.playChunk(audioData)
+      
+      this.expectedSequence++
+    }
+  }
+
+  async playChunk(audioData) {
+    return new Promise((resolve) => {
+      this.isPlaying = true
+      
+      try {
+        // Convert base64 to blob
+        const audioBlob = new Blob([
+          Uint8Array.from(atob(audioData), c => c.charCodeAt(0))
+        ], { type: 'audio/mpeg' })
+        
+        const audioUrl = URL.createObjectURL(audioBlob)
+        this.currentAudio = new Audio(audioUrl)
+        
+        this.currentAudio.onended = () => {
+          URL.revokeObjectURL(audioUrl)
+          this.currentAudio = null
+          this.isPlaying = false
+          resolve()
+        }
+        
+        this.currentAudio.onerror = (e) => {
+          console.error('🚫 [AudioQueue] Playback error:', e)
+          URL.revokeObjectURL(audioUrl)
+          this.currentAudio = null
+          this.isPlaying = false
+          resolve()
+        }
+        
+        this.currentAudio.play().catch(e => {
+          console.error('🚫 [AudioQueue] Play failed:', e)
+          this.isPlaying = false
+          resolve()
+        })
+        
+      } catch (e) {
+        console.error('🚫 [AudioQueue] Chunk processing error:', e)
+        this.isPlaying = false
+        resolve()
+      }
+    })
+  }
+
+  stop() {
+    if (this.currentAudio) {
+      this.currentAudio.pause()
+      this.currentAudio = null
+    }
+    this.isPlaying = false
+    this.chunks.clear()
+    this.expectedSequence = 1
+  }
+
+  clear() {
+    this.stop()
+  }
+}
+
+/**
  * useAutoVoice
  * High-level auto voice capture for conversational UX without a record button.
  *
@@ -30,6 +119,9 @@ export default function useAutoVoice({
   const [isProcessing, setIsProcessing] = useState(false)
   const [autoMode, setAutoMode] = useState(true)
   const [audioLevel, setAudioLevel] = useState(0)
+  
+  // Audio chunk queue for seamless playback
+  const audioQueueRef = useRef(new AudioChunkQueue())
   
   // Referencias para control de estado
   const silenceTimeoutRef = useRef(null)
@@ -220,26 +312,42 @@ export default function useAutoVoice({
     return 'idle'
   }, [isProcessing, isListening, isAssistantSpeaking])
 
+  // Función para manejar chunks de audio con sequence_id
+  const handleAudioChunk = useCallback((sequenceId, audioData) => {
+    console.log(`🎵 [useAutoVoice] Received audio chunk #${sequenceId}`)
+    audioQueueRef.current.enqueue(sequenceId, audioData)
+  }, [])
+
+  // Función para detener y limpiar la cola de audio
+  const stopAudioPlayback = useCallback(() => {
+    console.log('🛑 [useAutoVoice] Stopping audio playback')
+    audioQueueRef.current.stop()
+  }, [])
+
+  // Limpiar cola al desmontar
+  useEffect(() => {
+    return () => {
+      audioQueueRef.current.clear()
+    }
+  }, [])
+
   return {
-    // Estados
-    isListening,
+    isListening: listening,
     isProcessing,
     audioLevel,
     autoMode,
     voiceState: getVoiceState(),
-    
-    // Controles
     manualStart,
     manualStop,
     toggleAutoMode,
     resetProcessing,
-    
-    // Configuración
     vadConfig,
-    
-    // Métricas para optimización
     lastActivity: lastActivityRef.current,
     speechDetected: speechDetectedRef.current,
-    hadSpeechThisTurn: hadSpeechThisTurnRef.current
+    hadSpeechThisTurn: hadSpeechThisTurnRef.current,
+    // Nuevas funciones para streaming de audio
+    handleAudioChunk,
+    stopAudioPlayback,
+    audioQueue: audioQueueRef.current
   }
 }
