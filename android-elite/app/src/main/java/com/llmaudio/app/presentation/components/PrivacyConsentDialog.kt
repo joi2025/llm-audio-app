@@ -3,6 +3,8 @@ package com.llmaudio.app.presentation.components
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -53,7 +55,7 @@ fun PrivacyConsentDialog(
                 
                 // Icono de privacidad
                 Icon(
-                    imageVector = androidx.compose.material.icons.Icons.Default.Security,
+                    imageVector = Icons.Default.Security,
                     contentDescription = "Seguridad",
                     modifier = Modifier.size(48.dp),
                     tint = MaterialTheme.colorScheme.primary
