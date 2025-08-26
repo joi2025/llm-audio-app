@@ -33,9 +33,8 @@ android {
             )
             buildConfigField("String", "BACKEND_URL", "\"http://192.168.29.31:8001\"")
             buildConfigField("boolean", "DEBUG_LOGS", "false")
-            // Enable unit test coverage for release builds
+            buildConfigField("String", "OPENAI_ORG_ID", "\"\"") // <--- AÑADIDO AQUÍ
             enableUnitTestCoverage = true
-            // Use debug signing for release builds during development
             signingConfig = signingConfigs.getByName("debug")
         }
         debug {
@@ -43,7 +42,7 @@ android {
             isMinifyEnabled = false
             buildConfigField("String", "BACKEND_URL", "\"http://192.168.29.31:8001\"")
             buildConfigField("boolean", "DEBUG_LOGS", "true")
-            // Enable unit test coverage for debug builds
+            buildConfigField("String", "OPENAI_ORG_ID", "\"\"") // <--- AÑADIDO AQUÍ
             enableUnitTestCoverage = true
         }
     }

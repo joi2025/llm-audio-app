@@ -1,417 +1,365 @@
 package com.llmaudio.app.presentation.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.text.KeyboardOptions 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.*
+import androidx.compose.material3.ExperimentalMaterial3Api 
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.llmaudio.app.data.model.*
+import com.llmaudio.app.domain.model.VoiceState
 import com.llmaudio.app.presentation.viewmodel.AdminProViewModel
+import com.llmaudio.app.presentation.viewmodel.ApiKeyValidationState // Import the enum
+import com.llmaudio.app.presentation.viewmodel.VoicePipelineViewModel
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.*
 
-/**
- * AdminProScreen - Elite implementation of advanced admin panel
- * Migrated from android-native to android-elite architecture
- * Real-time metrics, logs, and system monitoring with native performance
- */
-@OptIn(ExperimentalMaterial3Api::class)
+
+@Composable
+fun FullScreenLoading() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.5f)),
+        contentAlignment = Alignment.Center
+    ) {
+        CircularProgressIndicator()
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class) 
 @Composable
 fun AdminProScreen(
-    modifier: Modifier = Modifier,
-    onBackClick: () -> Unit,
-    viewModel: AdminProViewModel = hiltViewModel()
+    adminProViewModel: AdminProViewModel = hiltViewModel(),
+    voicePipelineViewModel: VoicePipelineViewModel = hiltViewModel(),
+    onBack: () -> Unit 
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val metrics by viewModel.metrics.collectAsState()
-    val logs by viewModel.logs.collectAsState()
-    val connectionState by viewModel.connectionState.collectAsState()
+    val uiState by adminProViewModel.uiState.collectAsState()
+    val openAIApiKey by voicePipelineViewModel.apiKeyFlow.collectAsState()
+    val voiceState by voicePipelineViewModel.voiceState.collectAsState()
+    val voiceErrorMessage by voicePipelineViewModel.errorMessage.collectAsState()
+
+    val tabs = listOf(
+        "Consentimientos",
+        "Métricas",
+        "Uso",
+        "Diagnóstico",
+        "Personalidades",
+        "Configuración"
+    )
+    val pagerState = rememberPagerState(pageCount = { tabs.size })
+    val coroutineScope = rememberCoroutineScope()
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Admin Pro", style = MaterialTheme.typography.headlineSmall) },
+                navigationIcon = { 
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Volver")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
+                ),
+                actions = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        // Icono de estado de API Key global (basado en si está guardada o no)
+                        val apiKeyStatusIcon = if (openAIApiKey.isNotBlank()) Icons.Default.CheckCircle else Icons.Default.Warning
+                        val apiKeyStatusTint = if (openAIApiKey.isNotBlank()) Color.Green else Color.Red
+                        Icon(
+                            imageVector = apiKeyStatusIcon,
+                            contentDescription = "OpenAI API Status",
+                            tint = apiKeyStatusTint,
+                            modifier = Modifier.size(18.dp).padding(end = 4.dp)
+                        )
+                        Text(
+                            text = if (openAIApiKey.isNotBlank()) "API OK" else "API Desc.",
+                            color = MaterialTheme.colorScheme.onPrimary, // Usar color del TopAppBar
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            ScrollableTabRow(
+                selectedTabIndex = pagerState.currentPage,
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            ) {
+                tabs.forEachIndexed { index, title ->
+                    Tab(
+                        selected = pagerState.currentPage == index,
+                        onClick = {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(index)
+                            }
+                        },
+                        text = { Text(title) }
+                    )
+                }
+            }
+
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f)
+            ) { page ->
+                when (page) {
+                    0 -> ConsentHistoryTab(uiState.consents)
+                    1 -> MetricsHistoryTab(uiState.metrics)
+                    2 -> UsageHistoryTab(uiState.usages)
+                    3 -> DiagnosticTab()
+                    4 -> PersonalitiesTab()
+                    5 -> ConfigTab(voicePipelineViewModel, openAIApiKey, voiceState, voiceErrorMessage)
+                    else -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("Contenido para ${tabs[page]}")
+                    }
+                }
+            }
+        }
+        AnimatedVisibility(
+            visible = uiState.loading, 
+            enter = fadeIn(animationSpec = tween(300)),
+            exit = fadeOut(animationSpec = tween(300))
+        ) {
+            FullScreenLoading() 
+        }
+    }
+}
+
+@Composable
+fun ConfigTab(
+    voicePipelineViewModel: VoicePipelineViewModel,
+    openAIApiKey: String, // Esta es la clave guardada actualmente
+    voiceState: VoiceState,
+    voiceErrorMessage: String?
+) {
+    var apiKeyInput by remember { mutableStateOf(openAIApiKey) }
+    var passwordVisibility by remember { mutableStateOf(false) }
+    val apiKeyValidationStatus by voicePipelineViewModel.apiKeyValidity.collectAsState()
+
+    // Actualiza el campo de entrada si la clave guardada cambia (ej. desde otra fuente)
+    LaunchedEffect(openAIApiKey) {
+        apiKeyInput = openAIApiKey
+    }
     
-    var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("Salud", "Latencia", "Pipeline", "Logs", "Dispositivo")
+    // Resetea el estado de validación si el input cambia
+    LaunchedEffect(apiKeyInput) {
+        if (apiKeyValidationStatus != ApiKeyValidationState.IDLE) {
+             voicePipelineViewModel.resetApiKeyValidationState()
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0F172A))
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Top Bar
-        TopAppBar(
-            title = { 
-                Text(
-                    "Admin Pro", 
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                ) 
-            },
-            navigationIcon = {
-                IconButton(onClick = onBackClick) {
-                    Text("←", color = Color.White, fontSize = 20.sp)
-                }
-            },
-            actions = {
-                // Connection status indicator
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(end = 16.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(
-                                when (connectionState) {
-                                    ConnectionState.CONNECTED -> Color(0xFF10B981)
-                                    ConnectionState.CONNECTING, ConnectionState.RECONNECTING -> Color(0xFFF59E0B)
-                                    else -> Color(0xFFEF4444)
-                                }
-                            )
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = when (connectionState) {
-                            ConnectionState.CONNECTED -> "Conectado"
-                            ConnectionState.CONNECTING -> "Conectando"
-                            ConnectionState.RECONNECTING -> "Reconectando"
-                            else -> "Desconectado"
-                        },
-                        color = Color.White,
-                        fontSize = 12.sp
-                    )
-                }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Color(0xFF1E293B)
-            )
+        Text(
+            text = "Configuración de la Aplicación",
+            style = MaterialTheme.typography.headlineMedium,
+            modifier = Modifier.padding(bottom = 16.dp)
         )
-        
-        // Tab Row
-        TabRow(
-            selectedTabIndex = selectedTab,
-            containerColor = Color(0xFF1E293B),
-            contentColor = Color.White
-        ) {
-            tabs.forEachIndexed { index, title ->
-                Tab(
-                    selected = selectedTab == index,
-                    onClick = { selectedTab = index },
-                    text = { Text(title) }
-                )
-            }
-        }
-        
-        // Tab Content
-        when (selectedTab) {
-            0 -> HealthTab(connectionState, metrics, uiState, viewModel)
-            1 -> LatencyTab(metrics)
-            2 -> PipelineTab(metrics)
-            3 -> LogsTab(logs, viewModel)
-            4 -> DeviceTab()
-        }
-    }
-}
 
-@Composable
-private fun HealthTab(
-    connectionState: ConnectionState,
-    metrics: Map<MetricType, MetricData>,
-    uiState: AdminUIState,
-    viewModel: AdminProViewModel
-) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                HealthCard(
-                    title = "WebSocket",
-                    status = when (connectionState) {
-                        ConnectionState.CONNECTED -> "Conectado"
-                        ConnectionState.CONNECTING -> "Conectando"
-                        ConnectionState.RECONNECTING -> "Reconectando"
-                        else -> "Desconectado"
-                    },
-                    isHealthy = connectionState == ConnectionState.CONNECTED,
-                    onClick = {
-                        if (connectionState == ConnectionState.CONNECTED) {
-                            viewModel.disconnectWebSocket()
-                        } else {
-                            viewModel.connectWebSocket()
-                        }
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-                
-                HealthCard(
-                    title = "Audio",
-                    status = if (uiState.micPermissionGranted) "Permisos OK" else "Sin permisos",
-                    isHealthy = uiState.micPermissionGranted,
-                    onClick = { /* Handle permission request */ },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
-        
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                HealthCard(
-                    title = "Errores",
-                    status = "${metrics[MetricType.ERRORS]?.count ?: 0}",
-                    isHealthy = (metrics[MetricType.ERRORS]?.count ?: 0) == 0,
-                    onClick = { /* Show error details */ },
-                    modifier = Modifier.weight(1f)
-                )
-                
-                HealthCard(
-                    title = "Reconexiones",
-                    status = "${metrics[MetricType.RECONNECTIONS]?.count ?: 0}",
-                    isHealthy = (metrics[MetricType.RECONNECTIONS]?.count ?: 0) < 3,
-                    onClick = { /* Show reconnection history */ },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
-        
-        item {
-            // Performance Summary Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B))
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Text(
-                        "Resumen de Performance",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    
-                    val firstTokenLatency = metrics[MetricType.FIRST_TOKEN_MS]
-                    val roundtripLatency = metrics[MetricType.ROUNDTRIP_MS]
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text("Primer Token (P50)", color = Color.Gray, fontSize = 12.sp)
-                            Text(
-                                "${firstTokenLatency?.p50?.toInt() ?: 0}ms",
-                                color = Color.White,
-                                fontWeight = FontWeight.Medium
+        OutlinedTextField(
+            value = apiKeyInput,
+            onValueChange = { apiKeyInput = it },
+            label = { Text("API Key de OpenAI") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            visualTransformation = if (passwordVisibility) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = androidx.compose.ui.text.input.KeyboardType.Password
+            ),
+            trailingIcon = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    when (apiKeyValidationStatus) {
+                        ApiKeyValidationState.CHECKING -> {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp).padding(end = 4.dp),
+                                strokeWidth = 2.dp
                             )
                         }
-                        Column {
-                            Text("Roundtrip (P95)", color = Color.Gray, fontSize = 12.sp)
-                            Text(
-                                "${roundtripLatency?.p95?.toInt() ?: 0}ms",
-                                color = Color.White,
-                                fontWeight = FontWeight.Medium
+                        ApiKeyValidationState.VALID -> {
+                            Icon(
+                                imageVector = Icons.Filled.CheckCircle,
+                                contentDescription = "API Key Válida",
+                                tint = Color.Green,
+                                modifier = Modifier.padding(end = 4.dp)
                             )
                         }
-                        Column {
-                            Text("Interrupciones", color = Color.Gray, fontSize = 12.sp)
-                            Text(
-                                "${metrics[MetricType.INTERRUPTIONS]?.count ?: 0}",
-                                color = Color.White,
-                                fontWeight = FontWeight.Medium
+                        ApiKeyValidationState.INVALID -> {
+                            Icon(
+                                imageVector = Icons.Filled.Error,
+                                contentDescription = "API Key Inválida",
+                                tint = Color.Red,
+                                modifier = Modifier.padding(end = 4.dp)
                             )
                         }
+                        ApiKeyValidationState.IDLE -> { /* No mostrar nada o un icono neutral */ }
+                    }
+                    val image = if (passwordVisibility)
+                        Icons.Rounded.Visibility
+                    else Icons.Rounded.VisibilityOff
+                    val description = if (passwordVisibility) "Hide password" else "Show password"
+                    IconButton(onClick = { passwordVisibility = !passwordVisibility }) {
+                        Icon(imageVector = image, description)
                     }
                 }
             }
+        )
+
+        Button(
+            onClick = {
+                voicePipelineViewModel.saveApiKey(apiKeyInput.trim())
+                voicePipelineViewModel.checkOpenAIKeyValidity(apiKeyInput.trim())
+            },
+            enabled = apiKeyValidationStatus != ApiKeyValidationState.CHECKING, // Deshabilitar mientras verifica
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Guardar y Validar API Key")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Card de estado general de la API (basado en la clave guardada)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Estado de API Key (Guardada):",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                val isSavedKeyValid = openAIApiKey.isNotBlank() // Asumimos válida si no está en blanco para este display
+                Text(
+                    text = if (isSavedKeyValid) "Configurada: ${obfuscateApiKey(openAIApiKey)}" else "No configurada",
+                    color = if (isSavedKeyValid) Color.Green else Color.Red
+                )
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Estado del Pipeline de Voz:",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Estado: ${voiceState.javaClass.simpleName}", 
+                    color = when (voiceState) {
+                        is VoiceState.Idle -> Color.Gray
+                        is VoiceState.Listening -> Color.Blue
+                        is VoiceState.Processing -> Color.Magenta
+                        is VoiceState.Speaking -> Color.Cyan
+                        is VoiceState.Error -> Color.Red
+                    }
+                )
+                voiceErrorMessage?.let { errorMsg ->
+                    Text(
+                        text = "Error: $errorMsg",
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
         }
     }
 }
 
+fun obfuscateApiKey(apiKey: String): String {
+    if (apiKey.length < 10) return "****" 
+    val prefix = apiKey.substring(0, 3)
+    val suffix = apiKey.substring(apiKey.length - 4)
+    return "$prefix*********************$suffix"
+}
+
+
 @Composable
-private fun LatencyTab(metrics: Map<MetricType, MetricData>) {
+fun DiagnosticTab() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text("Aquí se mostrará información de diagnóstico en tiempo real (pings, latencias, etc.).")
+    }
+}
+
+@Composable
+fun PersonalitiesTab() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text("Aquí se gestionarán las personalidades (crear, editar, seleccionar).")
+    }
+}
+
+
+@Composable
+fun ConsentHistoryTab(consentHistory: List<String>) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        items(
-            listOf(
-                MetricType.WS_CONNECT_MS,
-                MetricType.FIRST_TOKEN_MS,
-                MetricType.TTS_START_MS,
-                MetricType.ROUNDTRIP_MS
-            )
-        ) { metricType ->
-            val data = metrics[metricType]
-            MetricCard(
-                title = metricType.displayName,
-                data = data,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-        
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                "Gráfica de Latencia (últimos 50 samples)",
-                color = Color.White,
-                fontWeight = FontWeight.Medium
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // Simple latency chart placeholder
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B))
-            ) {
+        if (consentHistory.isEmpty()) {
+            item {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillParentMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        "Gráfica de latencia\n(Implementación pendiente)",
-                        color = Color.Gray,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
+                    Text("No hay historial de consentimientos.", style = MaterialTheme.typography.bodyLarge)
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun PipelineTab(metrics: Map<MetricType, MetricData>) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Text(
-                "Contadores de Eventos",
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        
-        items(
-            listOf(
-                MetricType.AUDIO_CHUNKS,
-                MetricType.TTS_CANCELLED,
-                MetricType.LLM_FIRST_TOKEN,
-                MetricType.LLM_TOKENS,
-                MetricType.FINAL_TRANSCRIPTS,
-                MetricType.INTERRUPTIONS
-            ).chunked(2)
-        ) { rowMetrics ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                rowMetrics.forEach { metricType ->
-                    EventCountCard(
-                        title = metricType.displayName,
-                        count = metrics[metricType]?.count ?: 0,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                if (rowMetrics.size == 1) {
-                    Spacer(modifier = Modifier.weight(1f))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LogsTab(
-    logs: List<LogEntry>,
-    viewModel: AdminProViewModel
-) {
-    var filterText by remember { mutableStateOf("") }
-    var selectedLevel by remember { mutableStateOf("all") }
-    
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Filter controls
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B))
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = filterText,
-                    onValueChange = { filterText = it },
-                    label = { Text("Filtrar") },
-                    modifier = Modifier.weight(1f),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
-                    )
-                )
-                
-                Button(
-                    onClick = { viewModel.clearLogs() },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+        } else {
+            items(consentHistory) { consent ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
-                    Text("Limpiar")
-                }
-            }
-        }
-        
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            val filteredLogs = logs.filter { log ->
-                val matchesFilter = filterText.isEmpty() || 
-                    log.message.contains(filterText, ignoreCase = true) ||
-                    log.source.contains(filterText, ignoreCase = true)
-                val matchesLevel = selectedLevel == "all" || log.level == selectedLevel
-                matchesFilter && matchesLevel
-            }
-            
-            items(filteredLogs) { log ->
-                LogEntryCard(log = log)
-            }
-            
-            if (filteredLogs.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            "No hay logs que mostrar",
-                            color = Color.Gray
-                        )
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(text = consent, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
@@ -420,111 +368,31 @@ private fun LogsTab(
 }
 
 @Composable
-private fun DeviceTab() {
+fun MetricsHistoryTab(metricsHistory: List<String>) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        item {
-            DeviceInfoCard(
-                title = "Sistema",
-                info = mapOf(
-                    "Android" to "${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})",
-                    "Dispositivo" to "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}",
-                    "Arquitectura" to (android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "Unknown")
-                )
-            )
-        }
-        
-        item {
-            DeviceInfoCard(
-                title = "Memoria",
-                info = mapOf(
-                    "RAM Total" to "${Runtime.getRuntime().totalMemory() / 1024 / 1024} MB",
-                    "RAM Libre" to "${Runtime.getRuntime().freeMemory() / 1024 / 1024} MB",
-                    "RAM Usada" to "${(Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024} MB"
-                )
-            )
-        }
-        
-        item {
-            DeviceInfoCard(
-                title = "Aplicación",
-                info = mapOf(
-                    "Versión" to "1.0.0 Elite",
-                    "Build" to "Debug",
-                    "Arquitectura" to "Elite MVVM + Hilt"
-                )
-            )
-        }
-    }
-}
-
-// Helper Composables
-@Composable
-private fun HealthCard(
-    title: String,
-    status: String,
-    isHealthy: Boolean,
-    onClick: () -> Unit = {},
-    modifier: Modifier = Modifier
-) {
-    @OptIn(ExperimentalMaterial3Api::class)
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-        onClick = onClick
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Text(
-                text = title,
-                color = Color.White,
-                fontWeight = FontWeight.Medium
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = status,
-                color = if (isHealthy) Color(0xFF10B981) else Color(0xFFEF4444),
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-@Composable
-private fun MetricCard(
-    title: String,
-    data: MetricData?,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B))
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Text(title, color = Color.White, fontWeight = FontWeight.Medium)
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
-                    Text("P50", color = Color.Gray, fontSize = 12.sp)
-                    Text("${data?.p50?.toInt() ?: 0}ms", color = Color.White)
+        if (metricsHistory.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier.fillParentMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("No hay historial de métricas.", style = MaterialTheme.typography.bodyLarge)
                 }
-                Column {
-                    Text("P95", color = Color.Gray, fontSize = 12.sp)
-                    Text("${data?.p95?.toInt() ?: 0}ms", color = Color.White)
-                }
-                Column {
-                    Text("Avg", color = Color.Gray, fontSize = 12.sp)
-                    Text("${data?.average?.toInt() ?: 0}ms", color = Color.White)
+            }
+        } else {
+            items(metricsHistory) { metric ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(text = metric, style = MaterialTheme.typography.bodyMedium)
+                    }
                 }
             }
         }
@@ -532,117 +400,32 @@ private fun MetricCard(
 }
 
 @Composable
-private fun EventCountCard(
-    title: String,
-    count: Int,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B))
+fun UsageHistoryTab(usageHistory: List<String>) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = count.toString(),
-                color = Color(0xFF3B82F6),
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = title,
-                color = Color.Gray,
-                fontSize = 12.sp
-            )
-        }
-    }
-}
-
-@Composable
-private fun LogEntryCard(log: LogEntry) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A))
-    ) {
-        Row(
-            modifier = Modifier.padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = log.timestamp.substring(11, 19), // HH:mm:ss
-                color = Color.Gray,
-                fontSize = 10.sp,
-                modifier = Modifier.width(60.dp)
-            )
-            
-            Text(
-                text = log.level.uppercase(),
-                color = when (log.level) {
-                    "error" -> Color(0xFFEF4444)
-                    "warn" -> Color(0xFFF59E0B)
-                    "info" -> Color(0xFF3B82F6)
-                    else -> Color.Gray
-                },
-                fontSize = 10.sp,
-                modifier = Modifier.width(50.dp)
-            )
-            
-            Text(
-                text = log.source,
-                color = Color(0xFF10B981),
-                fontSize = 10.sp,
-                modifier = Modifier.width(80.dp)
-            )
-            
-            Text(
-                text = log.message,
-                color = Color.White,
-                fontSize = 12.sp,
-                modifier = Modifier.weight(1f)
-            )
-        }
-    }
-}
-
-@Composable
-private fun DeviceInfoCard(
-    title: String,
-    info: Map<String, String>
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B))
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Text(
-                text = title,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            info.forEach { (key, value) ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+        if (usageHistory.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier.fillParentMaxSize(),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = key,
-                        color = Color.Gray,
-                        fontSize = 14.sp
-                    )
-                    Text(
-                        text = value,
-                        color = Color.White,
-                        fontSize = 14.sp
-                    )
+                    Text("No hay historial de uso.", style = MaterialTheme.typography.bodyLarge)
                 }
-                Spacer(modifier = Modifier.height(4.dp))
+            }
+        } else {
+            items(usageHistory) { usage ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(text = usage, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
             }
         }
     }

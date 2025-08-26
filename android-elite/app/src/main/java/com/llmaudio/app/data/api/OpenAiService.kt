@@ -1,68 +1,61 @@
 package com.llmaudio.app.data.api
 
+import com.llmaudio.app.data.model.ChatCompletionRequest
+import com.llmaudio.app.data.model.ModerationRequest
+import com.llmaudio.app.data.model.ModerationResponse
+import com.llmaudio.app.data.model.OpenAiModelsResponse // Added import for listModels
+import com.llmaudio.app.data.model.TTSRequest
+import com.llmaudio.app.data.model.TranscriptionResponse
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.ResponseBody
-import retrofit2.Call
-import retrofit2.http.*
+import retrofit2.Response
+import retrofit2.http.Body
+import retrofit2.http.GET // Added import for GET
+import retrofit2.http.Header
+import retrofit2.http.Multipart
+import retrofit2.http.POST
+import retrofit2.http.Part
+import retrofit2.http.Streaming
 
 interface OpenAiService {
-    
+
     // Speech-to-Text (STT)
     @Multipart
     @POST("v1/audio/transcriptions")
     suspend fun transcribeAudio(
         @Header("Authorization") authorization: String,
         @Part file: MultipartBody.Part,
-        @Part("model") model: RequestBody = RequestBody.create(null, "whisper-1"),
-        @Part("language") language: RequestBody = RequestBody.create(null, "es")
-    ): TranscriptionResponse
-    
+        @Part("model") model: RequestBody, // Model is passed from ViewModel
+        @Part("language") language: RequestBody // Language is passed from ViewModel
+    ): Response<TranscriptionResponse>
+
     // Chat Completions with Streaming
     @Streaming
     @POST("v1/chat/completions")
-    fun streamChatCompletion(
+    suspend fun streamChatCompletion(
         @Header("Authorization") authorization: String,
         @Body request: ChatCompletionRequest
-    ): Call<ResponseBody>
-    
+    ): Response<ResponseBody>
+
     // Text-to-Speech (TTS)
     @Streaming
     @POST("v1/audio/speech")
-    fun generateSpeech(
+    suspend fun generateSpeech(
         @Header("Authorization") authorization: String,
         @Body request: TTSRequest
-    ): Call<ResponseBody>
-    
+    ): Response<ResponseBody>
+
+    // Moderations
     @POST("v1/moderations")
     suspend fun moderateContent(
         @Header("Authorization") authorization: String,
         @Body request: ModerationRequest
-    ): ModerationResponse
+    ): Response<ModerationResponse>
+
+    // List Models (for API Key validation)
+    @GET("v1/models")
+    suspend fun listModels(
+        @Header("Authorization") authorization: String
+    ): Response<OpenAiModelsResponse>
 }
-
-// Data Models
-data class TranscriptionResponse(
-    val text: String
-)
-
-data class ChatCompletionRequest(
-    val model: String = "gpt-4-turbo-preview",
-    val messages: List<Message>,
-    val temperature: Double = 0.7,
-    val max_tokens: Int = 500,
-    val stream: Boolean = true
-)
-
-data class Message(
-    val role: String,
-    val content: String
-)
-
-data class TTSRequest(
-    val model: String = "tts-1",
-    val input: String,
-    val voice: String = "nova",
-    val response_format: String = "mp3",
-    val speed: Double = 1.0
-)

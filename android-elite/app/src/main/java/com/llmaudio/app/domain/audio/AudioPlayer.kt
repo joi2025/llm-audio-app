@@ -41,6 +41,18 @@ data class AudioStream(
 class AudioPlayer @Inject constructor(
     private val context: Context
 ) {
+    interface PlaybackListener {
+        fun onStart(text: String)
+        fun onStop()
+        fun onError(error: String)
+    }
+
+    private var playbackListener: PlaybackListener? = null
+
+    fun setPlaybackListener(listener: PlaybackListener) {
+        this.playbackListener = listener
+    }
+
     companion object {
         private const val TAG = "AudioPlayer"
         private const val TTS_SAMPLE_RATE = 24000
@@ -48,7 +60,6 @@ class AudioPlayer @Inject constructor(
         private const val BUFFER_SIZE = 8192
     }
 
-    // Thread-safe state management
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
     
@@ -58,28 +69,21 @@ class AudioPlayer @Inject constructor(
     private val _queueSize = MutableStateFlow(0)
     val queueSize: StateFlow<Int> = _queueSize.asStateFlow()
     
-    // Concurrent audio queue and synchronization
     private val audioQueue = ConcurrentLinkedQueue<AudioStream>()
     private val streamIdCounter = AtomicInteger(0)
     private val isPlayingInternal = AtomicBoolean(false)
     private val playbackMutex = Mutex()
     
-    // Audio resources
     private var playbackJob: Job? = null
     private var currentMediaPlayer: MediaPlayer? = null
     private var currentAudioTrack: AudioTrack? = null
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     
-    /**
-     * Enqueues an audio stream for seamless playback
-     * Thread-safe with automatic queue management
-     */
     suspend fun enqueueStream(inputStream: InputStream, text: String = "", priority: Int = 0): Int {
         val streamId = streamIdCounter.incrementAndGet()
         val audioStream = AudioStream(streamId, inputStream, text, priority)
         
         playbackMutex.withLock {
-            // Enforce queue size limit
             if (audioQueue.size >= MAX_QUEUE_SIZE) {
                 Log.w(TAG, "Audio queue full, dropping oldest stream")
                 audioQueue.poll()?.inputStream?.close()
@@ -90,7 +94,6 @@ class AudioPlayer @Inject constructor(
             
             Log.d(TAG, "Enqueued audio stream $streamId: '$text' (queue size: ${audioQueue.size})")
             
-            // Start playback if not already active
             if (!isPlayingInternal.get()) {
                 startQueuePlayback()
             }
@@ -99,10 +102,6 @@ class AudioPlayer @Inject constructor(
         return streamId
     }
     
-    /**
-     * Starts continuous queue playback in background coroutine
-     * Handles stream processing with proper error recovery
-     */
     private fun startQueuePlayback() {
         if (playbackJob?.isActive == true) {
             return
@@ -117,49 +116,50 @@ class AudioPlayer @Inject constructor(
                 while (isPlayingInternal.get()) {
                     val audioStream = audioQueue.poll()
                     if (audioStream == null) {
-                        // Queue empty, wait for new streams
                         delay(50)
                         continue
                     }
                     
                     _queueSize.value = audioQueue.size
                     _currentlyPlaying.value = audioStream.text
+                    playbackListener?.onStart(audioStream.text)
                     
                     try {
                         playStreamInternal(audioStream)
                     } catch (e: Exception) {
                         Log.e(TAG, "Error playing stream ${audioStream.id}: ${e.message}", e)
+                        playbackListener?.onError("Error playing stream ${audioStream.id}: ${e.message}")
                     } finally {
-                        // Always close stream to prevent leaks
                         try {
                             audioStream.inputStream.close()
                         } catch (e: Exception) {
                             Log.w(TAG, "Error closing stream ${audioStream.id}", e)
                         }
+                        _currentlyPlaying.value = null // Clear after attempting to play
+                        if(audioQueue.isEmpty() && isPlayingInternal.get()) {
+                           // If queue is empty and we are supposed to be playing, signal stop
+                           // This is more of a stream completion than a full stop
+                           playbackListener?.onStop() 
+                        }
                     }
                 }
             } finally {
-                // Reset all state when playback stops
                 isPlayingInternal.set(false)
                 _isPlaying.value = false
                 _currentlyPlaying.value = null
                 _queueSize.value = 0
+                playbackListener?.onStop() // Signal a definitive stop
                 Log.d(TAG, "Queue playback stopped")
             }
         }
     }
     
-    /**
-     * Internal method to play a single audio stream using MediaPlayer
-     * Handles MP3 format with proper resource cleanup
-     */
     private suspend fun playStreamInternal(audioStream: AudioStream) = withContext(Dispatchers.IO) {
         Log.d(TAG, "Playing stream ${audioStream.id}: '${audioStream.text}'")
         
         val tempFile = File.createTempFile("tts_${audioStream.id}_", ".mp3", context.cacheDir)
         
         try {
-            // Copy InputStream to temporary file for MediaPlayer
             FileOutputStream(tempFile).use { fileOut ->
                 val buffer = ByteArray(BUFFER_SIZE)
                 var bytesRead: Int
@@ -173,7 +173,6 @@ class AudioPlayer @Inject constructor(
                 Log.d(TAG, "Stream ${audioStream.id} written to temp file: $totalBytes bytes")
             }
             
-            // Play using MediaPlayer with completion tracking
             val completionChannel = Channel<Unit>(1)
             
             currentMediaPlayer = MediaPlayer().apply {
@@ -195,6 +194,7 @@ class AudioPlayer @Inject constructor(
                 
                 setOnErrorListener { mp, what, extra ->
                     Log.e(TAG, "MediaPlayer error for stream ${audioStream.id}: what=$what, extra=$extra")
+                    playbackListener?.onError("MediaPlayer error for stream ${audioStream.id}: what=$what, extra=$extra")
                     mp.release()
                     currentMediaPlayer = null
                     completionChannel.trySend(Unit)
@@ -207,11 +207,9 @@ class AudioPlayer @Inject constructor(
                 Log.d(TAG, "Stream ${audioStream.id} playback started - duration: ${duration}ms")
             }
             
-            // Wait for playback completion
             completionChannel.receive()
             
         } finally {
-            // Always clean up temporary file
             try {
                 if (tempFile.exists()) {
                     tempFile.delete()
@@ -222,15 +220,12 @@ class AudioPlayer @Inject constructor(
         }
     }
     
-    /**
-     * Alternative method for playing PCM data directly using AudioTrack
-     * Useful for raw audio streams that don't need MP3 decoding
-     */
     suspend fun playPCMStream(inputStream: InputStream, sampleRate: Int = TTS_SAMPLE_RATE) = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Starting PCM audio playback...")
-            stop() // Stop any existing playback
+            stop() 
             
+            playbackListener?.onStart("PCM Stream") // Generic text for PCM
             val audioAttributes = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_ASSISTANT)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
@@ -249,6 +244,7 @@ class AudioPlayer @Inject constructor(
             )
             
             if (bufferSize == AudioTrack.ERROR || bufferSize == AudioTrack.ERROR_BAD_VALUE) {
+                playbackListener?.onError("Invalid buffer size for AudioTrack: $bufferSize")
                 throw IllegalStateException("Invalid buffer size for AudioTrack: $bufferSize")
             }
             
@@ -260,6 +256,7 @@ class AudioPlayer @Inject constructor(
                 .build()
             
             if (currentAudioTrack?.state != AudioTrack.STATE_INITIALIZED) {
+                playbackListener?.onError("AudioTrack not initialized properly")
                 throw IllegalStateException("AudioTrack not initialized properly")
             }
             
@@ -276,20 +273,22 @@ class AudioPlayer @Inject constructor(
                 
                 if (bytesWritten < 0) {
                     Log.w(TAG, "AudioTrack write error: $bytesWritten")
+                    playbackListener?.onError("AudioTrack write error: $bytesWritten")
                     break
                 }
             }
             
             Log.d(TAG, "PCM playback completed - total bytes: $totalBytesWritten")
             
-            // Wait for playback to finish
             currentAudioTrack?.stop()
             currentAudioTrack?.release()
             currentAudioTrack = null
+            playbackListener?.onStop()
             
         } catch (e: Exception) {
             Log.e(TAG, "Error during PCM audio playback", e)
-            stop()
+            playbackListener?.onError("Error during PCM audio playback: ${e.message}")
+            stop() // Ensure full stop on error
             throw e
         } finally {
             try {
@@ -300,24 +299,16 @@ class AudioPlayer @Inject constructor(
         }
     }
     
-    /**
-     * Legacy method for backward compatibility
-     */
     suspend fun playStream(inputStream: InputStream) {
         enqueueStream(inputStream)
     }
     
-    /**
-     * Stops all audio playback and clears the queue
-     * Thread-safe with proper resource cleanup
-     */
     suspend fun stop() {
         playbackMutex.withLock {
-            isPlayingInternal.set(false)
-            playbackJob?.cancel()
+            val wasPlaying = isPlayingInternal.getAndSet(false)
+            playbackJob?.cancelAndJoin() // Ensure coroutine is fully stopped
             playbackJob = null
             
-            // Stop and release MediaPlayer
             currentMediaPlayer?.let { mp ->
                 try {
                     if (mp.isPlaying) mp.stop()
@@ -328,7 +319,6 @@ class AudioPlayer @Inject constructor(
                 currentMediaPlayer = null
             }
             
-            // Stop and release AudioTrack
             currentAudioTrack?.let { track ->
                 try {
                     if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
@@ -344,7 +334,6 @@ class AudioPlayer @Inject constructor(
                 currentAudioTrack = null
             }
             
-            // Clear queue and close all streams
             while (audioQueue.isNotEmpty()) {
                 val stream = audioQueue.poll()
                 try {
@@ -354,18 +343,14 @@ class AudioPlayer @Inject constructor(
                 }
             }
             
-            // Reset all state
             _isPlaying.value = false
             _currentlyPlaying.value = null
             _queueSize.value = 0
-            
+            if(wasPlaying) playbackListener?.onStop() // Call onStop only if it was playing
             Log.d(TAG, "Audio playback stopped and queue cleared")
         }
     }
     
-    /**
-     * Clears the audio queue without stopping current playback
-     */
     suspend fun clearQueue() {
         playbackMutex.withLock {
             try {
@@ -381,14 +366,11 @@ class AudioPlayer @Inject constructor(
                 Log.d(TAG, "Audio queue cleared")
             } catch (e: Exception) {
                 Log.e(TAG, "Error clearing audio queue", e)
+                playbackListener?.onError("Error clearing audio queue: ${e.message}")
             }
         }
     }
     
-    /**
-     * Gets current queue status
-     * Thread-safe read-only access
-     */
     fun getQueueStatus(): Pair<Int, String?> {
         return Pair(audioQueue.size, _currentlyPlaying.value)
     }

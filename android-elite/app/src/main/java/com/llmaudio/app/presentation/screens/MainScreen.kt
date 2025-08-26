@@ -296,7 +296,7 @@ fun PersonalitySelector(
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(Personalities.all.filter { it.id != "default" }) { personality ->
+                items(Personalities.getAll().filter { it.id != "default" }) { personality -> // Changed Personalities.all to Personalities.getAll()
                     PersonalityCard(
                         personality = personality,
                         isSelected = personality.id == currentPersonality.id,

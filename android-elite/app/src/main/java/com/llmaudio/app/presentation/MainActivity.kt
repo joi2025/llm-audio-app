@@ -10,7 +10,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.viewmodel.compose.viewModel
+// import androidx.lifecycle.viewmodel.compose.viewModel // Already have hiltViewModel
 import com.llmaudio.app.data.store.PrivacyConsentStore
 import com.llmaudio.app.presentation.components.PrivacyConsentDialog
 import com.llmaudio.app.presentation.screens.MainScreen
@@ -31,6 +31,10 @@ import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.llmaudio.app.presentation.MainActivityUiState.*
+// Added imports for AdminProScreen dependencies if they were missing before, though hiltViewModel should handle them.
+import com.llmaudio.app.presentation.viewmodel.AdminProViewModel
+import com.llmaudio.app.presentation.viewmodel.VoicePipelineViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,30 +46,31 @@ import javax.inject.Inject
 class MainActivityViewModel @Inject constructor(
     private val privacyConsentStore: PrivacyConsentStore
 ) : ViewModel() {
-    
-    private val _uiState = MutableStateFlow(MainActivityUiState.Loading)
+
+    private val _uiState = MutableStateFlow<MainActivityUiState>(Loading)
     val uiState: StateFlow<MainActivityUiState> = _uiState.asStateFlow()
-    
+
     init {
         viewModelScope.launch {
             privacyConsentStore.hasAcceptedPrivacyConsent.collect { hasConsent ->
                 _uiState.value = if (hasConsent) {
-                    MainActivityUiState.ConsentAccepted
+                    ConsentAccepted
                 } else {
-                    MainActivityUiState.ConsentRequired
+                    ConsentRequired
                 }
             }
         }
     }
-    
+
     fun acceptPrivacyConsent() {
         viewModelScope.launch {
             privacyConsentStore.acceptPrivacyConsent()
+            // The flow collector in init will update uiState to ConsentAccepted
         }
     }
-    
+
     fun declinePrivacyConsent() {
-        _uiState.value = MainActivityUiState.ConsentDeclined
+        _uiState.value = ConsentDeclined
     }
 }
 
@@ -78,7 +83,7 @@ sealed class MainActivityUiState {
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-    
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -87,16 +92,16 @@ class MainActivity : ComponentActivity() {
             finish()
         }
     }
-    
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         setContent {
             val viewModel: MainActivityViewModel = hiltViewModel()
             val uiState by viewModel.uiState.collectAsState()
-            
+
             when (uiState) {
-                MainActivityUiState.Loading -> {
+                Loading -> {
                     // Mostrar splash screen o loading
                     LLMAudioTheme {
                         Surface(
@@ -107,8 +112,8 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-                
-                MainActivityUiState.ConsentRequired -> {
+
+                ConsentRequired -> {
                     LLMAudioTheme {
                         PrivacyConsentDialog(
                             onAccept = {
@@ -122,22 +127,22 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
-                
-                MainActivityUiState.ConsentDeclined -> {
+
+                ConsentDeclined -> {
                     // Usuario rechazó el consentimiento, cerrar app
                     LaunchedEffect(Unit) {
                         finish()
                     }
                 }
-                
-                MainActivityUiState.ConsentAccepted -> {
+
+                ConsentAccepted -> {
                     // Mostrar la aplicación principal
                     MainAppContent()
                 }
             }
         }
     }
-    
+
     @Composable
     private fun MainAppContent() {
         val isMiui = remember {
@@ -146,7 +151,7 @@ class MainActivity : ComponentActivity() {
             manufacturer.contains("xiaomi") ||
                     brand.contains("xiaomi") || brand.contains("redmi") || brand.contains("poco")
         }
-        
+
         if (isMiui) {
             val noToolbar = remember {
                 object : TextToolbar {
@@ -175,7 +180,7 @@ class MainActivity : ComponentActivity() {
             AppNavigation()
         }
     }
-    
+
     @Composable
     private fun AppNavigation() {
         LLMAudioTheme {
@@ -197,8 +202,13 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("admin") {
+                        // Instance AdminProViewModel and VoicePipelineViewModel here
+                        val adminProViewModel: AdminProViewModel = hiltViewModel()
+                        val voicePipelineViewModel: VoicePipelineViewModel = hiltViewModel()
                         AdminProScreen(
-                            onBackClick = { navController.popBackStack() }
+                            adminProViewModel = adminProViewModel, // Pass AdminProViewModel
+                            voicePipelineViewModel = voicePipelineViewModel, // Pass VoicePipelineViewModel
+                            onBack = { navController.popBackStack() } // Changed to onBack
                         )
                     }
                 }

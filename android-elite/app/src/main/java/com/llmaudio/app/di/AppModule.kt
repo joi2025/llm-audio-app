@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-import com.llmaudio.app.network.OpenAiService
+import com.llmaudio.app.data.api.OpenAiService // MODIFIED: Changed import to data.api
 import com.llmaudio.app.data.network.ApiKeyInterceptor
 import com.llmaudio.app.data.store.ApiKeyStore
 import com.llmaudio.app.domain.model.AudioPlayer
@@ -107,7 +107,8 @@ object AppModule {
     @Provides
     @Singleton
     fun provideMasterKey(@ApplicationContext context: Context): MasterKey {
-        return MasterKey.Builder(context)
+        val keyAlias = "_llm_audio_app_master_key_" // Alias fijo para la MasterKey
+        return MasterKey.Builder(context, keyAlias) // Especifica el alias aquí
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
     }
@@ -120,7 +121,7 @@ object AppModule {
     ): SharedPreferences {
         return EncryptedSharedPreferences.create(
             context,
-            "llmaudio_secure_prefs",
+            "llmaudio_secure_prefs", // Nombre del archivo de preferencias (ya es específico)
             masterKey,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM

@@ -47,11 +47,8 @@ data class LogEntry(
     val data: Any? = null
 )
 
-data class AdminUIState(
-    val micPermissionGranted: Boolean = false,
-    val isRecording: Boolean = false,
-    val lastError: String? = null
-)
+// AdminUIState data class fue eliminada de aquí para evitar redeclaración.
+// Su definición ahora reside en AdminUIState.kt
 
 data class WebSocketMessage(
     val event: String,
