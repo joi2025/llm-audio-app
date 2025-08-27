@@ -29,8 +29,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -79,11 +77,8 @@ class VoicePipelineViewModel @Inject constructor(
     private val _currentPersonality = MutableStateFlow(Personalities.getDefault())
     val currentPersonality: StateFlow<Personality> = _currentPersonality.asStateFlow()
 
-    val apiKeyFlow: StateFlow<String> = apiKeyStore.apiKeyFlow.stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(5000),
-        ""
-    )
+    private val _currentRawApiKey = MutableStateFlow("")
+    val currentRawApiKey: StateFlow<String> = _currentRawApiKey.asStateFlow()
 
     private val _apiKeyValidity = MutableStateFlow<ApiKeyValidationState>(ApiKeyValidationState.IDLE)
     val apiKeyValidity: StateFlow<ApiKeyValidationState> = _apiKeyValidity.asStateFlow()
@@ -127,9 +122,27 @@ class VoicePipelineViewModel @Inject constructor(
                     Personalities.getDefault()
                 }
                 _currentPersonality.value = newPersonality
-                resetConversation()
+                resetConversation() // Reset conversation when personality changes
             }
         }
+
+        viewModelScope.launch {
+            apiKeyStore.apiKeyFlow.collect { apiKey ->
+                _currentRawApiKey.value = apiKey
+                if (apiKey.isBlank()) {
+                    _apiKeyValidity.value = ApiKeyValidationState.INVALID
+                    // Potentially set an error message if this is unexpected,
+                    // but checkOpenAIKeyValidity will also handle it.
+                     _errorMessage.value = "API Key no configurada."
+                } else {
+                    // Only automatically check if it's not IDLE, to avoid re-checking on initial empty emission
+                    // if settings screen is going to trigger a check anyway.
+                     checkOpenAIKeyValidity(apiKey)
+                }
+            }
+        }
+
+
         audioPlayer.setPlaybackListener(object : AudioPlayer.PlaybackListener {
             override fun onStart(text: String) {
                 viewModelScope.launch {
@@ -169,27 +182,39 @@ class VoicePipelineViewModel @Inject constructor(
     fun saveApiKey(apiKey: String) {
         viewModelScope.launch {
             apiKeyStore.setApiKey(apiKey.trim())
+            // The flow collection in init will automatically trigger re-validation
         }
     }
 
     fun checkOpenAIKeyValidity(apiKeyToTest: String) {
         if (apiKeyToTest.isBlank()) {
             _apiKeyValidity.value = ApiKeyValidationState.INVALID
+            _errorMessage.value = "API Key no puede estar vacía."
             return
         }
         _apiKeyValidity.value = ApiKeyValidationState.CHECKING
+        _errorMessage.value = null // Clear previous errors
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val response = openAiService.listModels("Bearer $apiKeyToTest")
+                val response = openAiService.listModels(authHeader(apiKeyToTest)) // Use passed key for test
                 if (response.isSuccessful) {
-                    _apiKeyValidity.value = ApiKeyValidationState.VALID
+                    withContext(Dispatchers.Main) {
+                        _apiKeyValidity.value = ApiKeyValidationState.VALID
+                        _errorMessage.value = null // Clear error on success
+                    }
                     Log.i(TAG, "API Key is valid.")
                 } else {
-                    _apiKeyValidity.value = ApiKeyValidationState.INVALID
+                     withContext(Dispatchers.Main) {
+                        _apiKeyValidity.value = ApiKeyValidationState.INVALID
+                        _errorMessage.value = "API Key inválida o incorrecta."
+                    }
                     Log.w(TAG, "API Key is invalid: ${response.code()} - ${response.errorBody()?.string()}")
                 }
             } catch (e: Exception) {
-                _apiKeyValidity.value = ApiKeyValidationState.INVALID
+                withContext(Dispatchers.Main) {
+                    _apiKeyValidity.value = ApiKeyValidationState.INVALID
+                    _errorMessage.value = "Error al validar API Key: ${e.message}"
+                }
                 Log.e(TAG, "Error checking API Key validity", e)
             }
         }
@@ -212,9 +237,14 @@ class VoicePipelineViewModel @Inject constructor(
             _voiceState.value = VoiceState.Error("Permiso de audio denegado")
             return
         }
-        if (currentApiKey().isBlank()) {
-            _errorMessage.value = "Se requiere configurar la API key de OpenAI"
-            _voiceState.value = VoiceState.Error("API Key no configurada")
+
+        if (_currentRawApiKey.value.isBlank() || _apiKeyValidity.value != ApiKeyValidationState.VALID) {
+            _errorMessage.value = "API Key no configurada o inválida. Por favor, configúrala en Ajustes."
+            _voiceState.value = VoiceState.Error("API Key no configurada o inválida")
+            // Optionally, trigger a re-check if the key exists but validity is not confirmed
+            if (!_currentRawApiKey.value.isBlank() && _apiKeyValidity.value == ApiKeyValidationState.IDLE) {
+                 checkOpenAIKeyValidity(_currentRawApiKey.value)
+            }
             return
         }
 
@@ -227,7 +257,7 @@ class VoicePipelineViewModel @Inject constructor(
                 Log.d(TAG, "Starting to listen...")
                 _voiceState.value = VoiceState.Listening
             }
-            _errorMessage.value = null
+            _errorMessage.value = null // Clear previous errors
             _transcription.value = ""
             _assistantResponse.value = ""
             audioBufferMutex.withLock { audioBuffer.reset() }
@@ -327,15 +357,15 @@ class VoicePipelineViewModel @Inject constructor(
 
     private suspend fun processAudio(audioData: ByteArray) {
         Log.d(TAG, "Processing audio data...")
-        try {
-            if (currentApiKey().isBlank()) {
-                handleProcessingError(
-                    "API Key no configurada",
-                    IllegalStateException("API Key not set")
-                )
-                return
-            }
+        if (_currentRawApiKey.value.isBlank() || _apiKeyValidity.value != ApiKeyValidationState.VALID) {
+            handleProcessingError(
+                "API Key no configurada o inválida",
+                IllegalStateException("API Key not set or invalid")
+            )
+            return
+        }
 
+        try {
             val header = createWavHeader(audioData)
             val wavFileContent = header + audioData
             val tempFile = File.createTempFile("llm_audio_stt_", ".wav", context.cacheDir)
@@ -346,7 +376,7 @@ class VoicePipelineViewModel @Inject constructor(
             val filePart = MultipartBody.Part.createFormData("file", tempFile.name, requestFile)
             val modelPart = "whisper-1".toRequestBody("text/plain".toMediaTypeOrNull())
             val languagePart =
-                _currentPersonality.value.languageCode.toRequestBody("text/plain".toMediaTypeOrNull()) // Use language from personality
+                _currentPersonality.value.languageCode.toRequestBody("text/plain".toMediaTypeOrNull())
 
             val sttStartTime = System.currentTimeMillis()
             val response =
@@ -355,27 +385,18 @@ class VoicePipelineViewModel @Inject constructor(
             tempFile.delete() 
 
             if (response.isSuccessful) {
-                val transcriptionResponse =
-                    response.body() 
+                val transcriptionResponse = response.body() 
                 val transcribedText = transcriptionResponse?.text?.trim() ?: ""
-                _transcription.value = transcribedText // Update transcription stateflow
+                _transcription.value = transcribedText
                 Log.i(TAG, "Transcription successful: '$transcribedText'")
 
                 val minWordCount = 1 
                 val wordCount = transcribedText.split(Regex("\\s+")).filter { it.isNotBlank() }.size
 
                 if (transcribedText.isNotBlank() && wordCount >= minWordCount) {
-                    conversationHistory.add(
-                        com.llmaudio.app.data.model.Message(
-                            "user",
-                            transcribedText
-                        )
-                    )
-                    messageRepository.saveMessage(
-                        "user",
-                        transcribedText
-                    ) 
-                    streamLLMResponse(transcribedText) // Pass transcribedText here
+                    conversationHistory.add(Message("user", transcribedText))
+                    messageRepository.saveMessage("user", transcribedText) 
+                    streamLLMResponse(transcribedText)
                 } else {
                     if (transcribedText.isBlank()) {
                         Log.w(TAG, "Transcription was empty.")
@@ -403,12 +424,21 @@ class VoicePipelineViewModel @Inject constructor(
         }
     }
 
-    private fun streamLLMResponse(transcribedText: String) { // Added transcribedText parameter
+    private fun streamLLMResponse(transcribedText: String) {
+        if (_currentRawApiKey.value.isBlank() || _apiKeyValidity.value != ApiKeyValidationState.VALID) {
+            viewModelScope.launch { // Use viewModelScope for safety
+                handleProcessingError(
+                    "API Key no configurada o inválida para LLM",
+                     IllegalStateException("API Key not set or invalid for LLM")
+                )
+            }
+            return
+        }
         Log.d(TAG, "Streaming LLM response for text: '$transcribedText'")
         val messagesForLLM = mutableListOf(
-            com.llmaudio.app.data.model.Message("system", _currentPersonality.value.systemPrompt)
+            Message("system", _currentPersonality.value.systemPrompt)
         )
-        messagesForLLM.addAll(conversationHistory.takeLast(10)) // Ensure conversationHistory is up-to-date
+        messagesForLLM.addAll(conversationHistory.takeLast(6))
 
         val personality = _currentPersonality.value
         val wantsExtendedResponse = EXTENDED_RESPONSE_KEYWORDS.any { keyword ->
@@ -427,7 +457,6 @@ class VoicePipelineViewModel @Inject constructor(
             messages = messagesForLLM,
             model = personality.modelName,
             stream = true,
-            // max_tokens = currentMaxTokens, // Ensure @SerializedName("max_tokens") is used in ChatCompletionRequest
             temperature = personality.temperature.toDouble()
         )
 
@@ -441,10 +470,7 @@ class VoicePipelineViewModel @Inject constructor(
                     
                     if (response.isSuccessful) {
                         response.body()?.let {
-                            Log.d(
-                                TAG,
-                                "Got successful response from streamChatCompletion, processing stream..."
-                            )
+                            Log.d(TAG, "Got successful response from streamChatCompletion, processing stream...")
                             processStreamingResponse(it, this) 
                         } ?: run {
                             Log.e(TAG, "Null response body from LLM stream despite success")
@@ -456,8 +482,7 @@ class VoicePipelineViewModel @Inject constructor(
                             }
                         }
                     } else {
-                        val errorBody =
-                            response.errorBody()?.string() ?: "Error desconocido con LLM"
+                        val errorBody = response.errorBody()?.string() ?: "Error desconocido con LLM"
                         Log.e(TAG, "Error en streamChatCompletion: ${response.code()} - $errorBody")
                         withContext(Dispatchers.Main) {
                             handleProcessingError(
@@ -524,10 +549,7 @@ class VoicePipelineViewModel @Inject constructor(
                 val remainingText = currentSentence.toString().trim()
                 if (remainingText.isNotBlank()) {
                     sentenceCount++
-                    Log.i(
-                        TAG,
-                        "Processing remaining text as sentence #$sentenceCount for TTS: '$remainingText'"
-                    )
+                    Log.i(TAG, "Processing remaining text as sentence #$sentenceCount for TTS: '$remainingText'")
                     launchPredictiveTTS(remainingText, sentenceCount)
                 }
             }
@@ -536,28 +558,18 @@ class VoicePipelineViewModel @Inject constructor(
             withContext(Dispatchers.Main) { 
                 if (finalResponseText.isNotEmpty()) {
                     Log.i(TAG, "Final assistant response: '$finalResponseText'")
-                    conversationHistory.add(
-                        com.llmaudio.app.data.model.Message(
-                            "assistant",
-                            finalResponseText
-                        )
-                    )
-                    messageRepository.saveMessage(
-                        "assistant",
-                        finalResponseText
-                    ) 
+                    conversationHistory.add(Message("assistant", finalResponseText))
+                    messageRepository.saveMessage("assistant", finalResponseText) 
                     if (sentenceCount == 0 && _voiceState.value != VoiceState.Idle && _voiceState.value !is VoiceState.Error) {
                         stateMutex.withLock { 
-                            if (_voiceState.value !is VoiceState.Error) _voiceState.value =
-                                VoiceState.Idle
+                            if (_voiceState.value !is VoiceState.Error) _voiceState.value = VoiceState.Idle
                         }
                     }
                 } else {
                     Log.w(TAG, "Empty response from LLM after streaming.")
                     if (_voiceState.value != VoiceState.Idle && _voiceState.value !is VoiceState.Error) {
                         stateMutex.withLock {
-                            if (_voiceState.value !is VoiceState.Error) _voiceState.value =
-                                VoiceState.Idle
+                            if (_voiceState.value !is VoiceState.Error) _voiceState.value = VoiceState.Idle
                         }
                         _errorMessage.value = "Asistente no generó respuesta."
                     }
@@ -583,10 +595,16 @@ class VoicePipelineViewModel @Inject constructor(
     }
 
     private fun launchPredictiveTTS(sentence: String, sequenceId: Int) {
-        if (sentence.isBlank() || currentApiKey().isBlank()) {
-            Log.w(TAG, "Skipping TTS for blank sentence or missing API key. Sentence: '$sentence'")
+        if (sentence.isBlank()) {
+            Log.w(TAG, "Skipping TTS for blank sentence. Sentence: '$sentence'")
             return
         }
+        if (_currentRawApiKey.value.isBlank() || _apiKeyValidity.value != ApiKeyValidationState.VALID) {
+            Log.w(TAG, "Skipping TTS due to missing or invalid API Key.")
+            // Do not generate an error message here as the main operation (STT/LLM) would have failed first.
+            return
+        }
+
 
         val ttsJob = viewModelScope.launch(Dispatchers.IO) { 
             try {
@@ -594,9 +612,8 @@ class VoicePipelineViewModel @Inject constructor(
                 val request = TTSRequest(
                     input = sentence,
                     voice = personality.voice,
-                    model = "tts-1-hd", 
+                    model = "tts-1", 
                     responseFormat = "mp3"
-                    // language = personality.languageCode // Pass language to TTS request if API supports
                 )
 
                 Log.i(TAG, "Generating TTS for sentence #$sequenceId ('${sentence.take(30)}...') using voice ${personality.voice} and lang ${personality.languageCode}")
@@ -612,27 +629,17 @@ class VoicePipelineViewModel @Inject constructor(
                         )
                         Log.d(TAG, "Audio stream enqueued for sentence #$sequenceId")
                     } ?: run {
-                        Log.e(
-                            TAG,
-                            "Null response body from TTS despite success for sentence #$sequenceId"
-                        )
+                        Log.e(TAG, "Null response body from TTS despite success for sentence #$sequenceId")
                     }
                 } else {
                     val errorBody = response.errorBody()?.string() ?: "Error desconocido en TTS"
-                    Log.e(
-                        TAG,
-                        "Error generating TTS for sentence #$sequenceId: ${response.code()} - $errorBody"
-                    )
+                    Log.e(TAG, "Error generating TTS for sentence #$sequenceId: ${response.code()} - $errorBody")
                 }
 
             } catch (e: CancellationException) {
                 Log.i(TAG, "Predictive TTS cancelled for sentence #$sequenceId")
             } catch (e: Exception) {
-                Log.e(
-                    TAG,
-                    "Error in predictive TTS for sentence #$sequenceId: '${sentence.take(30)}...'",
-                    e
-                )
+                Log.e(TAG, "Error in predictive TTS for sentence #$sequenceId: '${sentence.take(30)}...'", e)
             }
         }
         ttsJobs.add(ttsJob)
@@ -712,10 +719,7 @@ class VoicePipelineViewModel @Inject constructor(
 
         val lastWordPeriod = trimmedText.substringAfterLast(" ").trimEnd(*SENTENCE_ENDINGS)
         if (ABBREVIATIONS.any { it.equals(lastWordPeriod, ignoreCase = true) }) {
-            if (lastWordPeriod.equals(
-                    "St",
-                    ignoreCase = true
-                ) && lastToken.contains(".")) return false
+            if (lastWordPeriod.equals("St", ignoreCase = true) && lastToken.contains(".")) return false
             if (lastToken.trim() == "." && ABBREVIATIONS.any {
                     it.equals(
                         trimmedText.substringBeforeLast(".")
@@ -738,8 +742,9 @@ class VoicePipelineViewModel @Inject constructor(
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    private fun currentApiKey(): String = apiKeyFlow.value
-    private fun authHeader(): String = "Bearer ${currentApiKey()}"
+    // Modified to accept an optional key, defaults to the reactive current key
+    private fun authHeader(apiKey: String = _currentRawApiKey.value): String = "Bearer $apiKey"
+
 
     private fun handleRecordingError(error: Throwable) {
         Log.e(TAG, "Recording error: ${error.message}", error)
@@ -757,9 +762,7 @@ class VoicePipelineViewModel @Inject constructor(
         Log.e(TAG, "Processing error: $message", error)
         viewModelScope.launch(Dispatchers.Main.immediate) { 
             val displayMessage =
-                message.take(100) + if (error.message != null && !message.contains(error.message!!)) " (${
-                    error.message!!.take(50)
-                })" else ""
+                message.take(100) + if (error.message != null && !message.contains(error.message!!)) " (${error.message!!.take(50)})" else ""
             _voiceState.value = VoiceState.Error(
                 displayMessage.replace("Exception: ", "").replace("java.io.IOException: ", "")
             )

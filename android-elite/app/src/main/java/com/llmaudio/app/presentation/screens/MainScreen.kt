@@ -364,7 +364,7 @@ fun SettingsDialog(
     onDismiss: () -> Unit,
     viewModel: VoicePipelineViewModel = hiltViewModel()
 ) {
-    val savedKey by viewModel.apiKeyFlow.collectAsState(initial = "")
+    val savedKey by viewModel.currentRawApiKey.collectAsState()
     var apiKey by remember { mutableStateOf("") }
     LaunchedEffect(savedKey) { if (apiKey.isEmpty()) apiKey = savedKey }
     

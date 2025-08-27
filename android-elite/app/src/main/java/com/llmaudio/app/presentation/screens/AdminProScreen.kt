@@ -56,7 +56,7 @@ fun AdminProScreen(
     onBack: () -> Unit 
 ) {
     val uiState by adminProViewModel.uiState.collectAsState()
-    val openAIApiKey by voicePipelineViewModel.apiKeyFlow.collectAsState()
+    val openAIApiKey by voicePipelineViewModel.currentRawApiKey.collectAsState()
     val voiceState by voicePipelineViewModel.voiceState.collectAsState()
     val voiceErrorMessage by voicePipelineViewModel.errorMessage.collectAsState()
 
