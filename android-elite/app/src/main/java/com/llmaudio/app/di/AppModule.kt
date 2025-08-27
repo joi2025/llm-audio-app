@@ -7,13 +7,14 @@ import androidx.security.crypto.MasterKey
 import com.llmaudio.app.data.api.OpenAiService // MODIFIED: Changed import to data.api
 import com.llmaudio.app.data.network.ApiKeyInterceptor
 import com.llmaudio.app.data.store.ApiKeyStore
-import com.llmaudio.app.domain.model.AudioPlayer
+// import com.llmaudio.app.domain.model.AudioPlayer; // Eliminado
 import com.llmaudio.app.data.db.AppDatabase
 import com.llmaudio.app.data.db.MessageDao
 import com.llmaudio.app.data.db.UsageStatsDao
 import com.llmaudio.app.data.repository.MessageRepository
 import com.llmaudio.app.data.repository.ConsentRepository
 import com.llmaudio.app.data.repository.UsageRepository
+import com.llmaudio.app.data.store.TtsQualityStore // Added import
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -98,11 +99,7 @@ object AppModule {
             .create(OpenAiService::class.java)
     }
     
-    @Provides
-    @Singleton
-    fun provideAudioPlayer(@ApplicationContext context: Context): AudioPlayer {
-        return AudioPlayer(context)
-    }
+    // El método provideAudioPlayer fue eliminado
 
     @Provides
     @Singleton
@@ -127,4 +124,8 @@ object AppModule {
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
     }
+
+    @Provides
+    @Singleton
+    fun provideTtsQualityStore(@ApplicationContext context: Context): TtsQualityStore = TtsQualityStore(context) // Added provider
 }

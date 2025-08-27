@@ -16,12 +16,12 @@ import com.llmaudio.app.data.api.OpenAiService
 import com.llmaudio.app.data.model.ChatCompletionRequest
 import com.llmaudio.app.data.model.Message // Ensure this is the correct Message model
 import com.llmaudio.app.data.model.TTSRequest
-// import com.llmaudio.app.data.model.TranscriptionResponse // Not directly used, OpenAiService handles it
 import com.llmaudio.app.data.repository.MessageRepository
 import com.llmaudio.app.data.repository.MetricsRepository // Assuming this is used or will be
 import com.llmaudio.app.data.store.ApiKeyStore
 import com.llmaudio.app.data.store.SelectedPersonalityStore
-import com.llmaudio.app.domain.audio.AudioPlayer
+import com.llmaudio.app.data.store.TtsQualityStore
+import com.llmaudio.app.domain.audio.AudioPlayer // Correctly uses AudioPlayer
 import com.llmaudio.app.domain.model.Personalities // Import Personalities
 import com.llmaudio.app.domain.model.Personality
 import com.llmaudio.app.domain.model.VoiceState
@@ -54,6 +54,7 @@ class VoicePipelineViewModel @Inject constructor(
     private val metricsRepository: MetricsRepository,
     private val apiKeyStore: ApiKeyStore,
     private val selectedPersonalityStore: SelectedPersonalityStore,
+    private val ttsQualityStore: TtsQualityStore,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -131,58 +132,71 @@ class VoicePipelineViewModel @Inject constructor(
                 _currentRawApiKey.value = apiKey
                 if (apiKey.isBlank()) {
                     _apiKeyValidity.value = ApiKeyValidationState.INVALID
-                    // Potentially set an error message if this is unexpected,
-                    // but checkOpenAIKeyValidity will also handle it.
-                     _errorMessage.value = "API Key no configurada."
+                    _errorMessage.value = "API Key no configurada."
                 } else {
-                    // Only automatically check if it's not IDLE, to avoid re-checking on initial empty emission
-                    // if settings screen is going to trigger a check anyway.
-                     checkOpenAIKeyValidity(apiKey)
+                    checkOpenAIKeyValidity(apiKey)
                 }
             }
         }
 
-
         audioPlayer.setPlaybackListener(object : AudioPlayer.PlaybackListener {
             override fun onStart(text: String) {
-                viewModelScope.launch {
+                Log.d(TAG, "AudioPlayer.PlaybackListener onStart: $text. Current state: ${_voiceState.value}")
+                viewModelScope.launch { // Launch in viewModelScope for stateMutex
                     stateMutex.withLock {
                         if (_voiceState.value !is VoiceState.Error) {
                             _voiceState.value = VoiceState.Speaking
                         }
                     }
                 }
-                Log.d(TAG, "AudioPlayer started speaking: '$text'")
             }
 
             override fun onStop() {
-                viewModelScope.launch {
-                    stateMutex.withLock {
-                        if (_voiceState.value == VoiceState.Speaking) {
-                            _voiceState.value = VoiceState.Idle
-                        }
-                    }
-                }
-                Log.d(TAG, "AudioPlayer stopped speaking.")
+                Log.d(TAG, "AudioPlayer.PlaybackListener onStop. Current state: ${_voiceState.value}")
+                checkAndSetIdleState("AudioPlayer.onStop")
             }
 
             override fun onError(error: String) {
-                Log.e(TAG, "AudioPlayer Error: $error")
-                viewModelScope.launch(Dispatchers.Main) {
-                    handleProcessingError(
-                        "Error de AudioPlayer: $error",
-                        Exception("AudioPlayer: $error")
-                    )
-                }
+                Log.e(TAG, "AudioPlayer.PlaybackListener onError: $error. Current state: ${_voiceState.value}")
+                handleProcessingError(
+                    "Error de AudioPlayer: $error",
+                    Exception("AudioPlayer: $error")
+                )
+                 checkAndSetIdleState("AudioPlayer.onError")
             }
         })
+
         if (bufferSize <= 0) bufferSize = SAMPLE_RATE * 2 * 1 * (16 / 8) // Basic fallback
     }
+
+    private fun checkAndSetIdleState(caller: String) {
+        viewModelScope.launch {
+            stateMutex.withLock {
+                val llmDone = currentLLMJob == null || currentLLMJob?.isCompleted == true || currentLLMJob?.isCancelled == true
+                val allTtsJobsDone = ttsJobs.all { it.isCompleted || it.isCancelled }
+                val audioQueueEmpty = audioPlayer.queueSize.value == 0
+
+                Log.d(TAG, "checkAndSetIdleState called by $caller. LLM Done: $llmDone, All TTS Jobs Done: $allTtsJobsDone, Audio Queue Empty: $audioQueueEmpty, Current State: ${_voiceState.value}")
+
+                if (llmDone && allTtsJobsDone && audioQueueEmpty) {
+                    if (_voiceState.value == VoiceState.Speaking || _voiceState.value == VoiceState.Processing || _voiceState.value is VoiceState.Error) {
+                        _voiceState.value = VoiceState.Idle
+                        Log.i(TAG, "All processes (LLM, TTS, AudioQueue) complete. State set to Idle by $caller.")
+                    } else if (_voiceState.value == VoiceState.Listening) {
+                        _voiceState.value = VoiceState.Idle
+                        Log.w(TAG, "Was in Listening state when checkAndSetIdleState triggered by $caller. Forcing Idle.")
+                    }
+                } else {
+                    Log.i(TAG, "Conditions for Idle not yet met (called by $caller). LLM done: $llmDone, TTS done: $allTtsJobsDone, Queue empty: $audioQueueEmpty. State: ${_voiceState.value}")
+                }
+            }
+        }
+    }
+
 
     fun saveApiKey(apiKey: String) {
         viewModelScope.launch {
             apiKeyStore.setApiKey(apiKey.trim())
-            // The flow collection in init will automatically trigger re-validation
         }
     }
 
@@ -193,18 +207,18 @@ class VoicePipelineViewModel @Inject constructor(
             return
         }
         _apiKeyValidity.value = ApiKeyValidationState.CHECKING
-        _errorMessage.value = null // Clear previous errors
+        _errorMessage.value = null
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val response = openAiService.listModels(authHeader(apiKeyToTest)) // Use passed key for test
+                val response = openAiService.listModels(authHeader(apiKeyToTest))
                 if (response.isSuccessful) {
                     withContext(Dispatchers.Main) {
                         _apiKeyValidity.value = ApiKeyValidationState.VALID
-                        _errorMessage.value = null // Clear error on success
+                        _errorMessage.value = null
                     }
                     Log.i(TAG, "API Key is valid.")
                 } else {
-                     withContext(Dispatchers.Main) {
+                    withContext(Dispatchers.Main) {
                         _apiKeyValidity.value = ApiKeyValidationState.INVALID
                         _errorMessage.value = "API Key inválida o incorrecta."
                     }
@@ -224,7 +238,6 @@ class VoicePipelineViewModel @Inject constructor(
         _apiKeyValidity.value = ApiKeyValidationState.IDLE
     }
 
-
     fun changePersonality(personality: Personality) {
         viewModelScope.launch {
             selectedPersonalityStore.saveSelectedPersonalityId(personality.id)
@@ -241,28 +254,27 @@ class VoicePipelineViewModel @Inject constructor(
         if (_currentRawApiKey.value.isBlank() || _apiKeyValidity.value != ApiKeyValidationState.VALID) {
             _errorMessage.value = "API Key no configurada o inválida. Por favor, configúrala en Ajustes."
             _voiceState.value = VoiceState.Error("API Key no configurada o inválida")
-            // Optionally, trigger a re-check if the key exists but validity is not confirmed
             if (!_currentRawApiKey.value.isBlank() && _apiKeyValidity.value == ApiKeyValidationState.IDLE) {
-                 checkOpenAIKeyValidity(_currentRawApiKey.value)
+                checkOpenAIKeyValidity(_currentRawApiKey.value)
             }
             return
         }
 
         viewModelScope.launch {
             stateMutex.withLock {
-                if (_voiceState.value is VoiceState.Listening || _voiceState.value is VoiceState.Processing) {
-                    Log.d(TAG, "Already listening or processing, ignoring startListening call.")
+                if (_voiceState.value is VoiceState.Listening || _voiceState.value is VoiceState.Processing || _voiceState.value is VoiceState.Speaking) {
+                    Log.d(TAG, "Already listening, processing, or speaking, ignoring startListening call. State: ${_voiceState.value}")
                     return@launch
                 }
                 Log.d(TAG, "Starting to listen...")
                 _voiceState.value = VoiceState.Listening
             }
-            _errorMessage.value = null // Clear previous errors
+            _errorMessage.value = null
             _transcription.value = ""
             _assistantResponse.value = ""
             audioBufferMutex.withLock { audioBuffer.reset() }
 
-            try { 
+            try {
                 val currentBufferSize =
                     AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
                 if (currentBufferSize == AudioRecord.ERROR_BAD_VALUE || currentBufferSize <= 0) {
@@ -275,7 +287,7 @@ class VoicePipelineViewModel @Inject constructor(
                     SAMPLE_RATE,
                     CHANNEL_CONFIG,
                     AUDIO_FORMAT,
-                    bufferSize * 2 
+                    bufferSize * 2
                 )
                 audioRecord?.startRecording()
                 if (audioRecord?.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
@@ -292,25 +304,27 @@ class VoicePipelineViewModel @Inject constructor(
                             audioBufferMutex.withLock {
                                 audioBuffer.write(readBuffer, 0, bytesRead)
                             }
+                            // val peak = readBuffer.maxOrNull()?.toFloat() ?: 0f
+                            // _audioLevel.value = peak / Short.MAX_VALUE
                         } else if (bytesRead < 0) {
                             Log.e(TAG, "AudioRecord read error: $bytesRead")
-                            break 
+                            break
                         }
                     }
-                    _audioLevel.value = 0f 
+                    _audioLevel.value = 0f
                     Log.d(TAG, "Recording thread finished.")
                 }
-            } catch (e: SecurityException) { 
+            } catch (e: SecurityException) {
                 Log.e(TAG, "SecurityException during recording setup", e)
                 handleRecordingError(e)
-            } catch (e: IllegalStateException) { 
+            } catch (e: IllegalStateException) {
                 Log.e(TAG, "IllegalStateException during recording setup", e)
                 handleRecordingError(e)
-            } catch (e: Exception) { 
+            } catch (e: Exception) {
                 Log.e(TAG, "Generic Exception during recording setup", e)
                 handleRecordingError(e)
             }
-        } 
+        }
     }
 
     fun stopListening() {
@@ -324,7 +338,7 @@ class VoicePipelineViewModel @Inject constructor(
                 }
                 _voiceState.value = VoiceState.Processing
             }
-            _audioLevel.value = 0f 
+            _audioLevel.value = 0f
             Log.d(TAG, "Transitioned to Processing state.")
 
             recordingThread?.cancelAndJoin()
@@ -345,8 +359,8 @@ class VoicePipelineViewModel @Inject constructor(
             if (audioData.isEmpty()) {
                 if (previousState == VoiceState.Listening) { 
                     Log.w(TAG, "Audio data is empty after recording.")
-                    _voiceState.value = VoiceState.Idle
                     _errorMessage.value = "No se grabó audio."
+                    stateMutex.withLock { _voiceState.value = VoiceState.Idle }
                 }
                 return@launch
             }
@@ -378,24 +392,23 @@ class VoicePipelineViewModel @Inject constructor(
             val languagePart =
                 _currentPersonality.value.languageCode.toRequestBody("text/plain".toMediaTypeOrNull())
 
-            val sttStartTime = System.currentTimeMillis()
             val response =
                 openAiService.transcribeAudio(authHeader(), filePart, modelPart, languagePart)
-            
-            tempFile.delete() 
+
+            tempFile.delete()
 
             if (response.isSuccessful) {
-                val transcriptionResponse = response.body() 
+                val transcriptionResponse = response.body()
                 val transcribedText = transcriptionResponse?.text?.trim() ?: ""
                 _transcription.value = transcribedText
                 Log.i(TAG, "Transcription successful: '$transcribedText'")
 
-                val minWordCount = 1 
+                val minWordCount = 1
                 val wordCount = transcribedText.split(Regex("\\s+")).filter { it.isNotBlank() }.size
 
                 if (transcribedText.isNotBlank() && wordCount >= minWordCount) {
                     conversationHistory.add(Message("user", transcribedText))
-                    messageRepository.saveMessage("user", transcribedText) 
+                    messageRepository.saveMessage("user", transcribedText)
                     streamLLMResponse(transcribedText)
                 } else {
                     if (transcribedText.isBlank()) {
@@ -405,7 +418,7 @@ class VoicePipelineViewModel @Inject constructor(
                         Log.w(TAG, "Transcription too short or meaningless: '$transcribedText'. Ignoring.")
                         _errorMessage.value = "No se entendió el audio, intente de nuevo."
                     }
-                    _voiceState.value = VoiceState.Idle
+                    checkAndSetIdleState("processAudio - bad transcription")
                 }
             } else {
                 val errorBody = response.errorBody()?.string() ?: "Error desconocido en STT"
@@ -415,10 +428,10 @@ class VoicePipelineViewModel @Inject constructor(
                     HttpException(response)
                 )
             }
-        } catch (e: IOException) { 
+        } catch (e: IOException) {
             Log.e(TAG, "IOException during audio processing", e)
             handleProcessingError("Error de archivo al procesar audio: ${e.message}", e)
-        } catch (e: Exception) { 
+        } catch (e: Exception) {
             Log.e(TAG, "Error inesperado al procesar audio", e)
             handleProcessingError("Error al procesar audio: ${e.message}", e)
         }
@@ -426,10 +439,10 @@ class VoicePipelineViewModel @Inject constructor(
 
     private fun streamLLMResponse(transcribedText: String) {
         if (_currentRawApiKey.value.isBlank() || _apiKeyValidity.value != ApiKeyValidationState.VALID) {
-            viewModelScope.launch { // Use viewModelScope for safety
+            viewModelScope.launch {
                 handleProcessingError(
                     "API Key no configurada o inválida para LLM",
-                     IllegalStateException("API Key not set or invalid for LLM")
+                    IllegalStateException("API Key not set or invalid for LLM")
                 )
             }
             return
@@ -438,7 +451,7 @@ class VoicePipelineViewModel @Inject constructor(
         val messagesForLLM = mutableListOf(
             Message("system", _currentPersonality.value.systemPrompt)
         )
-        messagesForLLM.addAll(conversationHistory.takeLast(6))
+        messagesForLLM.addAll(conversationHistory.takeLast(6)) 
 
         val personality = _currentPersonality.value
         val wantsExtendedResponse = EXTENDED_RESPONSE_KEYWORDS.any { keyword ->
@@ -457,17 +470,17 @@ class VoicePipelineViewModel @Inject constructor(
             messages = messagesForLLM,
             model = personality.modelName,
             stream = true,
-            temperature = personality.temperature.toDouble()
+            temperature = personality.temperature.toDouble(),
+            max_tokens = currentMaxTokens
         )
 
         currentLLMJob?.cancel() 
         currentLLMJob =
-            viewModelScope.launch(Dispatchers.IO) { 
+            viewModelScope.launch(Dispatchers.IO) {
                 try {
                     Log.i(TAG, "Calling streamChatCompletion with ${messagesForLLM.size} messages. max_tokens: $currentMaxTokens")
-                    val llmStartTime = System.currentTimeMillis()
                     val response = openAiService.streamChatCompletion(authHeader(), request)
-                    
+
                     if (response.isSuccessful) {
                         response.body()?.let {
                             Log.d(TAG, "Got successful response from streamChatCompletion, processing stream...")
@@ -495,16 +508,25 @@ class VoicePipelineViewModel @Inject constructor(
                     Log.i(TAG, "LLM Stream job cancelled.")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error in streamChatCompletion call or stream processing", e)
-                    withContext(Dispatchers.Main) { 
+                    withContext(Dispatchers.Main) {
                         handleProcessingError("Error de conexión con LLM: ${e.message}", e)
                     }
                 }
             }
+        currentLLMJob?.invokeOnCompletion { throwable ->
+            if (throwable != null && throwable !is CancellationException) {
+                Log.e(TAG, "LLM job completed with unhandled error: $throwable")
+            } else if (throwable is CancellationException) {
+                 Log.i(TAG, "LLM job explicitly cancelled. Current state: ${_voiceState.value}")
+            }
+            Log.d(TAG, "LLM Job invokeOnCompletion. Throwable: $throwable")
+            checkAndSetIdleState("LLMJob.invokeOnCompletion")
+        }
     }
 
     private suspend fun processStreamingResponse(
         responseBody: ResponseBody,
-        scope: CoroutineScope
+        scope: CoroutineScope 
     ) {
         withContext(Dispatchers.Main) { _assistantResponse.value = "" }
 
@@ -541,11 +563,11 @@ class VoicePipelineViewModel @Inject constructor(
                     }
                 } else if (line.contentEquals("data: [DONE]")) {
                     Log.i(TAG, "LLM Stream finished [DONE]")
-                    break
+                    break 
                 }
             }
 
-            if (currentSentence.isNotEmpty()) {
+            if (scope.isActive && currentSentence.isNotEmpty()) { 
                 val remainingText = currentSentence.toString().trim()
                 if (remainingText.isNotBlank()) {
                     sentenceCount++
@@ -559,23 +581,13 @@ class VoicePipelineViewModel @Inject constructor(
                 if (finalResponseText.isNotEmpty()) {
                     Log.i(TAG, "Final assistant response: '$finalResponseText'")
                     conversationHistory.add(Message("assistant", finalResponseText))
-                    messageRepository.saveMessage("assistant", finalResponseText) 
-                    if (sentenceCount == 0 && _voiceState.value != VoiceState.Idle && _voiceState.value !is VoiceState.Error) {
-                        stateMutex.withLock { 
-                            if (_voiceState.value !is VoiceState.Error) _voiceState.value = VoiceState.Idle
-                        }
-                    }
+                    messageRepository.saveMessage("assistant", finalResponseText)
                 } else {
                     Log.w(TAG, "Empty response from LLM after streaming.")
-                    if (_voiceState.value != VoiceState.Idle && _voiceState.value !is VoiceState.Error) {
-                        stateMutex.withLock {
-                            if (_voiceState.value !is VoiceState.Error) _voiceState.value = VoiceState.Idle
-                        }
-                        _errorMessage.value = "Asistente no generó respuesta."
-                    }
+                    _errorMessage.value = "Asistente no generó respuesta."
                 }
             }
-        } 
+        }
     }
 
     private fun parseSSEChunk(data: String): String? {
@@ -596,36 +608,35 @@ class VoicePipelineViewModel @Inject constructor(
 
     private fun launchPredictiveTTS(sentence: String, sequenceId: Int) {
         if (sentence.isBlank()) {
-            Log.w(TAG, "Skipping TTS for blank sentence. Sentence: '$sentence'")
+            Log.w(TAG, "Skipping TTS for blank sentence. Sequence: $sequenceId, Sentence: '$sentence'")
             return
         }
         if (_currentRawApiKey.value.isBlank() || _apiKeyValidity.value != ApiKeyValidationState.VALID) {
-            Log.w(TAG, "Skipping TTS due to missing or invalid API Key.")
-            // Do not generate an error message here as the main operation (STT/LLM) would have failed first.
+            Log.w(TAG, "Skipping TTS due to missing or invalid API Key. Sequence: $sequenceId")
             return
         }
 
-
-        val ttsJob = viewModelScope.launch(Dispatchers.IO) { 
+        val ttsJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 val personality = _currentPersonality.value
+                val selectedTtsModel = ttsQualityStore.selectedTtsModelFlow.first() 
+
                 val request = TTSRequest(
                     input = sentence,
                     voice = personality.voice,
-                    model = "tts-1", 
-                    responseFormat = "mp3"
+                    model = selectedTtsModel ?: "tts-1", 
+                    response_format = "mp3" 
                 )
 
-                Log.i(TAG, "Generating TTS for sentence #$sequenceId ('${sentence.take(30)}...') using voice ${personality.voice} and lang ${personality.languageCode}")
-                val ttsStartTime = System.currentTimeMillis()
+                Log.i(TAG, "Generating TTS for sentence #$sequenceId ('${sentence.take(30)}...') using model $selectedTtsModel, voice ${personality.voice}")
                 val response = openAiService.generateSpeech(authHeader(), request)
-                
+
                 if (response.isSuccessful) {
                     response.body()?.let {
                         audioPlayer.enqueueStream(
                             inputStream = it.byteStream(),
                             text = sentence.take(50) + if (sentence.length > 50) "..." else "", 
-                            priority = sequenceId
+                            priority = sequenceId 
                         )
                         Log.d(TAG, "Audio stream enqueued for sentence #$sequenceId")
                     } ?: run {
@@ -643,27 +654,47 @@ class VoicePipelineViewModel @Inject constructor(
             }
         }
         ttsJobs.add(ttsJob)
-        ttsJob.invokeOnCompletion { ttsJobs.remove(ttsJob) } 
+        ttsJob.invokeOnCompletion { throwable ->
+            ttsJobs.remove(ttsJob) 
+            if (throwable != null && throwable !is CancellationException) {
+                Log.e(TAG, "TTS Job for sequence #$sequenceId completed with error: $throwable")
+            } else if (throwable is CancellationException) {
+                Log.i(TAG, "TTS Job for sequence #$sequenceId cancelled.")
+            }
+            Log.d(TAG, "TTS Job #$sequenceId invokeOnCompletion. Throwable: $throwable. Remaining TTS jobs: ${ttsJobs.size}")
+            checkAndSetIdleState("TTSJob.invokeOnCompletion (#$sequenceId)")
+        }
     }
 
     fun interruptSpeaking() {
-        viewModelScope.launch { 
+        viewModelScope.launch {
             Log.i(TAG, "Interrupting speaking and active processes by user.")
-            stateMutex.withLock { 
-                ttsJobs.forEach { if (it.isActive) it.cancel("Interrupted by user from interruptSpeaking") }
-                ttsJobs.clear() 
-                currentLLMJob?.cancel("Interrupted by user from interruptSpeaking")
-                currentLLMJob = null 
-                audioPlayer.stop() 
-
-                if (_voiceState.value == VoiceState.Processing || _voiceState.value == VoiceState.Speaking) {
-                    _voiceState.value = VoiceState.Idle
-                }
-                _assistantResponse.value = ""
-                _transcription.value = "" 
+            val activeTtsJobs = ttsJobs.filter { it.isActive }
+            if (activeTtsJobs.isNotEmpty()) {
+                Log.d(TAG, "Interrupt: Cancelling ${activeTtsJobs.size} TTS jobs.")
+                activeTtsJobs.forEach { it.cancel("Interrupted by user from interruptSpeaking") }
             }
+
+            currentLLMJob?.let {
+                if (it.isActive) {
+                    Log.d(TAG, "Interrupt: Cancelling LLM job.")
+                    it.cancel("Interrupted by user from interruptSpeaking")
+                }
+            }
+            
+            Log.d(TAG, "Interrupt: Stopping audio player and clearing queue.")
+            audioPlayer.stop() 
+
+            stateMutex.withLock {
+                _voiceState.value = VoiceState.Idle 
+                _assistantResponse.value = ""
+                _transcription.value = ""
+                Log.i(TAG, "Interrupt: VoiceState forced to Idle. Assistant and transcription cleared.")
+            }
+            checkAndSetIdleState("interruptSpeaking - forceful")
         }
     }
+
 
     private fun resetConversation() {
         conversationHistory.clear()
@@ -672,8 +703,8 @@ class VoicePipelineViewModel @Inject constructor(
 
     private fun createWavHeader(audioData: ByteArray): ByteArray {
         val sampleRate = SAMPLE_RATE
-        val channels = 1 
-        val bitsPerSample = 16 
+        val channels = 1
+        val bitsPerSample = 16
         val byteRate = sampleRate * channels * bitsPerSample / 8
         val blockAlign = (channels * bitsPerSample / 8).toShort()
         val dataSize = audioData.size
@@ -719,11 +750,10 @@ class VoicePipelineViewModel @Inject constructor(
 
         val lastWordPeriod = trimmedText.substringAfterLast(" ").trimEnd(*SENTENCE_ENDINGS)
         if (ABBREVIATIONS.any { it.equals(lastWordPeriod, ignoreCase = true) }) {
-            if (lastWordPeriod.equals("St", ignoreCase = true) && lastToken.contains(".")) return false
             if (lastToken.trim() == "." && ABBREVIATIONS.any {
                     it.equals(
-                        trimmedText.substringBeforeLast(".")
-                            .substringAfterLast(" ").trim(), ignoreCase = true
+                        trimmedText.substringBeforeLast(".").substringAfterLast(" ").trim(),
+                        ignoreCase = true
                     )
                 }) return false
         }
@@ -731,7 +761,7 @@ class VoicePipelineViewModel @Inject constructor(
         if (lastToken.matches(Regex("\\d")) && trimmedText.matches(Regex(".*\\d+\\.\\d*$"))) return false 
         if (lastToken == "." && trimmedText.matches(Regex(".*\\d+$"))) return false 
 
-        return true 
+        return true
     }
 
 
@@ -742,9 +772,7 @@ class VoicePipelineViewModel @Inject constructor(
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    // Modified to accept an optional key, defaults to the reactive current key
     private fun authHeader(apiKey: String = _currentRawApiKey.value): String = "Bearer $apiKey"
-
 
     private fun handleRecordingError(error: Throwable) {
         Log.e(TAG, "Recording error: ${error.message}", error)
@@ -752,9 +780,10 @@ class VoicePipelineViewModel @Inject constructor(
             _voiceState.value = VoiceState.Error("Error de grabación")
             _errorMessage.value =
                 "Error al acceder al micrófono: ${error.localizedMessage ?: "desconocido"}"
-            audioRecord?.release()
+            audioRecord?.release() 
             audioRecord = null
             recordingThread?.cancel() 
+            checkAndSetIdleState("handleRecordingError")
         }
     }
 
@@ -768,9 +797,12 @@ class VoicePipelineViewModel @Inject constructor(
             )
             _errorMessage.value = displayMessage
 
-            ttsJobs.forEach { if (it.isActive) it.cancel("Processing error occurred") }
-            ttsJobs.clear()
-            currentLLMJob?.cancel("Processing error occurred")
+            ttsJobs.forEach { if (it.isActive) it.cancel("Processing error occurred: $message") }
+
+            currentLLMJob?.let {
+                if (it.isActive) it.cancel("Processing error occurred: $message")
+            }
+            
             audioPlayer.stop() 
         }
     }
@@ -778,10 +810,13 @@ class VoicePipelineViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         Log.d(TAG, "ViewModel cleared and resources released")
-        audioRecord?.release() 
+        audioRecord?.release()
         audioRecord = null
-        recordingThread?.cancel() 
-        ttsJobs.forEach { it.cancel("ViewModel cleared") } 
-        currentLLMJob?.cancel("ViewModel cleared") 
+        recordingThread?.cancel()
+        ttsJobs.forEach { it.cancel("ViewModel cleared") }
+        ttsJobs.clear() 
+        currentLLMJob?.cancel("ViewModel cleared")
+        currentLLMJob = null
+        audioPlayer.setPlaybackListener(null) 
     }
 }
